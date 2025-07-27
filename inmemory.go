@@ -2,7 +2,6 @@ package eventstore
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -50,8 +49,8 @@ func (s *InMemoryEventStore) Append(streamID string, events []Event) error {
 	return nil
 }
 
-// Load retrieves events for the given stream starting from the cursor.
-func (s *InMemoryEventStore) Load(streamID string, cursor string, limit int) ([]Event, error) {
+// Load retrieves events for the given stream starting from the version.
+func (s *InMemoryEventStore) Load(streamID string, fromVersion int, limit int) ([]Event, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -60,20 +59,10 @@ func (s *InMemoryEventStore) Load(streamID string, cursor string, limit int) ([]
 		return []Event{}, nil
 	}
 
-	// Parse cursor as version number (0 means start from beginning)
-	startVersion := int64(0)
-	if cursor != "" {
-		var err error
-		startVersion, err = strconv.ParseInt(cursor, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid cursor format: %v", err)
-		}
-	}
-
 	// Find starting position
 	var result []Event
 	for _, event := range stream {
-		if event.Version > startVersion {
+		if event.Version > int64(fromVersion) {
 			result = append(result, event)
 			if limit > 0 && len(result) >= limit {
 				break

@@ -76,7 +76,7 @@ func main() {
 	// Load events from the stream
 	fmt.Printf("\n📖 Loading events from stream '%s'...\n", streamID)
 
-	loadedEvents, err := store.Load(streamID, "", 10)
+	loadedEvents, err := store.Load(streamID, 0, 10)
 	if err != nil {
 		log.Fatalf("Failed to load events: %v", err)
 	}
@@ -95,17 +95,17 @@ func main() {
 		fmt.Println()
 	}
 
-	// Demonstrate cursor-based loading
-	fmt.Println("🔍 Demonstrating cursor-based loading...")
+	// Demonstrate version-based loading
+	fmt.Println("🔍 Demonstrating version-based loading...")
 	fmt.Println("Loading events starting from version 1:")
 
-	cursorEvents, err := store.Load(streamID, "1", 1)
+	versionEvents, err := store.Load(streamID, 1, 1)
 	if err != nil {
-		log.Fatalf("Failed to load events with cursor: %v", err)
+		log.Fatalf("Failed to load events with version: %v", err)
 	}
 
-	fmt.Printf("✅ Loaded %d event(s) with cursor:\n", len(cursorEvents))
-	for _, event := range cursorEvents {
+	fmt.Printf("✅ Loaded %d event(s) with version:\n", len(versionEvents))
+	for _, event := range versionEvents {
 		fmt.Printf("  Event Type: %s, Version: %d\n", event.Type, event.Version)
 	}
 

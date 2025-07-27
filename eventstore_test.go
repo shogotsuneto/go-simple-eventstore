@@ -32,7 +32,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load("test-stream", "", 10)
+	loadedEvents, err := store.Load("test-stream", 0, 10)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 func TestInMemoryEventStore_Load_EmptyStream(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	events, err := store.Load("non-existent-stream", "", 10)
+	events, err := store.Load("non-existent-stream", 0, 10)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestInMemoryEventStore_Load_EmptyStream(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventStore_Load_WithCursor(t *testing.T) {
+func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 	store := NewInMemoryEventStore()
 
 	// Add some events
@@ -95,13 +95,13 @@ func TestInMemoryEventStore_Load_WithCursor(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load("test-stream", "1", 10)
+	loadedEvents, err := store.Load("test-stream", 1, 10)
 	if err != nil {
-		t.Fatalf("Load with cursor failed: %v", err)
+		t.Fatalf("Load with version failed: %v", err)
 	}
 
 	if len(loadedEvents) != 2 {
-		t.Fatalf("Expected 2 events with cursor '1', got %d", len(loadedEvents))
+		t.Fatalf("Expected 2 events with fromVersion 1, got %d", len(loadedEvents))
 	}
 
 	if loadedEvents[0].Type != "Event2" {
@@ -128,7 +128,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load("test-stream", "", 2)
+	loadedEvents, err := store.Load("test-stream", 0, 2)
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -145,23 +145,6 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventStore_Load_InvalidCursor(t *testing.T) {
-	store := NewInMemoryEventStore()
-
-	// Add an event first so the stream exists
-	events := []Event{
-		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
-	}
-	err := store.Append("test-stream", events)
-	if err != nil {
-		t.Fatalf("Append failed: %v", err)
-	}
-
-	_, err = store.Load("test-stream", "invalid-cursor", 10)
-	if err == nil {
-		t.Fatal("Expected error for invalid cursor, got nil")
-	}
-}
 
 func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 	store := NewInMemoryEventStore()
@@ -171,7 +154,7 @@ func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 		t.Fatalf("Append empty events failed: %v", err)
 	}
 
-	events, err := store.Load("test-stream", "", 10)
+	events, err := store.Load("test-stream", 0, 10)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -199,7 +182,7 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	loadedEvents, err := store.Load("test-stream", "", 10)
+	loadedEvents, err := store.Load("test-stream", 0, 10)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}

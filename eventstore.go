@@ -24,8 +24,8 @@ type EventStore interface {
 	// Append adds new events to the given stream.
 	Append(streamID string, events []Event) error
 
-	// Load retrieves events for the given stream starting from the cursor.
-	// The cursor parameter specifies where to start loading events from.
+	// Load retrieves events for the given stream starting from the version.
+	// The fromVersion parameter specifies where to start loading events from.
 	// The limit parameter specifies the maximum number of events to return.
-	Load(streamID string, cursor string, limit int) ([]Event, error)
+	Load(streamID string, fromVersion int, limit int) ([]Event, error)
 }
