@@ -1,27 +1,29 @@
-package eventstore
+package memory
 
 import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
 // InMemoryEventStore is a simple in-memory implementation of EventStore.
 // This implementation is suitable for testing and demonstration purposes.
 type InMemoryEventStore struct {
 	mu      sync.RWMutex
-	streams map[string][]Event
+	streams map[string][]eventstore.Event
 }
 
 // NewInMemoryEventStore creates a new in-memory event store.
 func NewInMemoryEventStore() *InMemoryEventStore {
 	return &InMemoryEventStore{
-		streams: make(map[string][]Event),
+		streams: make(map[string][]eventstore.Event),
 	}
 }
 
 // Append adds new events to the given stream.
-func (s *InMemoryEventStore) Append(streamID string, events []Event) error {
+func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -50,17 +52,17 @@ func (s *InMemoryEventStore) Append(streamID string, events []Event) error {
 }
 
 // Load retrieves events for the given stream using the specified options.
-func (s *InMemoryEventStore) Load(streamID string, opts LoadOptions) ([]Event, error) {
+func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	stream, exists := s.streams[streamID]
 	if !exists {
-		return []Event{}, nil
+		return []eventstore.Event{}, nil
 	}
 
 	// Find starting position
-	var result []Event
+	var result []eventstore.Event
 	for _, event := range stream {
 		if event.Version > opts.FromVersion {
 			result = append(result, event)

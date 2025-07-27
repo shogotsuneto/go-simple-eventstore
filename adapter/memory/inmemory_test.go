@@ -1,15 +1,17 @@
-package eventstore
+package memory
 
 import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
 func TestInMemoryEventStore_Append(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	events := []Event{
+	events := []eventstore.Event{
 		{
 			Type: "TestEvent1",
 			Data: []byte(`{"test": "data1"}`),
@@ -32,7 +34,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -69,7 +71,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 func TestInMemoryEventStore_Load_EmptyStream(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	events, err := store.Load("non-existent-stream", LoadOptions{FromVersion: 0, Limit: 10})
+	events, err := store.Load("non-existent-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -83,7 +85,7 @@ func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 	store := NewInMemoryEventStore()
 
 	// Add some events
-	events := []Event{
+	events := []eventstore.Event{
 		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
 		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
@@ -95,7 +97,7 @@ func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 1, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load with version failed: %v", err)
 	}
@@ -116,7 +118,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	store := NewInMemoryEventStore()
 
 	// Add some events
-	events := []Event{
+	events := []eventstore.Event{
 		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
 		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
@@ -128,7 +130,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 2})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 2})
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -149,12 +151,12 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	err := store.Append("test-stream", []Event{})
+	err := store.Append("test-stream", []eventstore.Event{})
 	if err != nil {
 		t.Fatalf("Append empty events failed: %v", err)
 	}
 
-	events, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 10})
+	events, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -167,7 +169,7 @@ func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	originalEvent := Event{
+	originalEvent := eventstore.Event{
 		ID:   "custom-id",
 		Type: "TestEvent",
 		Data: []byte(`{"custom": "data"}`),
@@ -177,12 +179,12 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 		Timestamp: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
 
-	err := store.Append("test-stream", []Event{originalEvent})
+	err := store.Append("test-stream", []eventstore.Event{originalEvent})
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
