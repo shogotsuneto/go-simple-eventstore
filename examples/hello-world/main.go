@@ -6,7 +6,7 @@ import (
 	"log"
 
 	eventstore "github.com/shogotsuneto/go-simple-eventstore"
-	"github.com/shogotsuneto/go-simple-eventstore/adapter/memory"
+	"github.com/shogotsuneto/go-simple-eventstore/memory"
 )
 
 // UserCreated represents a domain event when a user is created
