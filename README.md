@@ -26,10 +26,14 @@ type EventStore interface {
 }
 ```
 
-## 🔌 Supported Adapters
+## 🔌 Backend Adapters
 
-- **PostgreSQL** - Reliable relational database adapter
-- **DynamoDB** - AWS NoSQL database adapter
+### Implemented
+- **In-Memory** - Simple in-memory implementation (suitable for testing and development)
+
+### Work In Progress (WIP)
+- **PostgreSQL** - Reliable relational database adapter (WIP)
+- **DynamoDB** - AWS NoSQL database adapter (WIP)
 - **More adapters coming** - Extensible design allows for easy addition of new database backends
 
 ## 🚀 Getting Started
