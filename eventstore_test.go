@@ -32,7 +32,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load("test-stream", 0, 10)
+	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 func TestInMemoryEventStore_Load_EmptyStream(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	events, err := store.Load("non-existent-stream", 0, 10)
+	events, err := store.Load("non-existent-stream", LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load("test-stream", 1, 10)
+	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load with version failed: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load("test-stream", 0, 2)
+	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 2})
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 		t.Fatalf("Append empty events failed: %v", err)
 	}
 
-	events, err := store.Load("test-stream", 0, 10)
+	events, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	loadedEvents, err := store.Load("test-stream", 0, 10)
+	loadedEvents, err := store.Load("test-stream", LoadOptions{FromVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}

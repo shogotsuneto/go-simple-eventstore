@@ -19,13 +19,19 @@ type Event struct {
 	Version int64
 }
 
+// LoadOptions contains options for loading events from a stream.
+type LoadOptions struct {
+	// FromVersion specifies where to start loading events from
+	FromVersion int
+	// Limit specifies the maximum number of events to return
+	Limit int
+}
+
 // EventStore defines the core interface for event storage.
 type EventStore interface {
 	// Append adds new events to the given stream.
 	Append(streamID string, events []Event) error
 
-	// Load retrieves events for the given stream starting from the version.
-	// The fromVersion parameter specifies where to start loading events from.
-	// The limit parameter specifies the maximum number of events to return.
-	Load(streamID string, fromVersion int, limit int) ([]Event, error)
+	// Load retrieves events for the given stream using the specified options.
+	Load(streamID string, opts LoadOptions) ([]Event, error)
 }

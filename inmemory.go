@@ -29,7 +29,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current stream or create new one
+	// Get current stream (nil if stream does not exist)
 	stream := s.streams[streamID]
 
 	// Set version and timestamp for each event
@@ -49,8 +49,8 @@ func (s *InMemoryEventStore) Append(streamID string, events []Event) error {
 	return nil
 }
 
-// Load retrieves events for the given stream starting from the version.
-func (s *InMemoryEventStore) Load(streamID string, fromVersion int, limit int) ([]Event, error) {
+// Load retrieves events for the given stream using the specified options.
+func (s *InMemoryEventStore) Load(streamID string, opts LoadOptions) ([]Event, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -62,9 +62,9 @@ func (s *InMemoryEventStore) Load(streamID string, fromVersion int, limit int) (
 	// Find starting position
 	var result []Event
 	for _, event := range stream {
-		if event.Version > int64(fromVersion) {
+		if event.Version > int64(opts.FromVersion) {
 			result = append(result, event)
-			if limit > 0 && len(result) >= limit {
+			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
 		}
