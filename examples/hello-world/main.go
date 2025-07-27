@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/shogotsuneto/go-simple-eventstore"
+	"github.com/shogotsuneto/go-simple-eventstore/pkg/eventstore"
 )
 
 // UserCreated represents a domain event when a user is created
