@@ -47,8 +47,7 @@ func (s *PostgresEventStore) InitSchema() error {
 		event_type VARCHAR(255) NOT NULL,
 		event_data BYTEA NOT NULL,
 		metadata JSONB,
-		timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-		UNIQUE(stream_id, version)
+		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_events_stream_id ON events(stream_id);
