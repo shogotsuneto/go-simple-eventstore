@@ -30,7 +30,11 @@ type LoadOptions struct {
 // EventStore defines the core interface for event storage.
 type EventStore interface {
 	// Append adds new events to the given stream.
-	Append(streamID string, events []Event) error
+	// expectedVersion is used for optimistic concurrency control:
+	// - If expectedVersion is -1, the stream can be in any state (no concurrency check)
+	// - If expectedVersion is 0, the stream must not exist (stream creation)
+	// - If expectedVersion > 0, the stream must be at exactly that version
+	Append(streamID string, events []Event, expectedVersion int) error
 
 	// Load retrieves events for the given stream using the specified options.
 	Load(streamID string, opts LoadOptions) ([]Event, error)

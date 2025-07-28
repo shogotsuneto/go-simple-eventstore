@@ -95,7 +95,7 @@ func main() {
 	streamID := "user-123"
 	fmt.Printf("\n📝 Appending %d events to stream '%s'...\n", len(events), streamID)
 
-	err = store.Append(streamID, events)
+	err = store.Append(streamID, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}

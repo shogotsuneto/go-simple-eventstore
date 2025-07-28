@@ -28,7 +28,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 		},
 	}
 
-	err := store.Append("test-stream", events)
+	err := store.Append("test-stream", events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
 	}
 
-	err := store.Append("test-stream", events)
+	err := store.Append("test-stream", events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
 	}
 
-	err := store.Append("test-stream", events)
+	err := store.Append("test-stream", events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	err := store.Append("test-stream", []eventstore.Event{})
+	err := store.Append("test-stream", []eventstore.Event{}, -1)
 	if err != nil {
 		t.Fatalf("Append empty events failed: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 		Timestamp: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
 
-	err := store.Append("test-stream", []eventstore.Event{originalEvent})
+	err := store.Append("test-stream", []eventstore.Event{originalEvent}, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -210,5 +210,76 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 	}
 	if !loadedEvent.Timestamp.Equal(time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)) {
 		t.Errorf("Expected Timestamp to be preserved, got %v", loadedEvent.Timestamp)
+	}
+}
+
+func TestInMemoryEventStore_ExpectedVersion_NewStream(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	events := []eventstore.Event{
+		{Type: "TestEvent", Data: []byte(`{"test": "data"}`)},
+	}
+
+	// Should succeed when creating a new stream with expectedVersion 0
+	err := store.Append("new-stream", events, 0)
+	if err != nil {
+		t.Fatalf("Expected successful append to new stream with version 0, got error: %v", err)
+	}
+
+	// Should fail when trying to create the same stream again with expectedVersion 0
+	err = store.Append("new-stream", events, 0)
+	if err == nil {
+		t.Fatal("Expected error when trying to create existing stream with version 0")
+	}
+}
+
+func TestInMemoryEventStore_ExpectedVersion_ExactMatch(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Create initial event
+	events1 := []eventstore.Event{
+		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
+	}
+	err := store.Append("test-stream", events1, 0)
+	if err != nil {
+		t.Fatalf("Failed to create stream: %v", err)
+	}
+
+	// Should succeed when appending to version 1
+	events2 := []eventstore.Event{
+		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
+	}
+	err = store.Append("test-stream", events2, 1)
+	if err != nil {
+		t.Fatalf("Expected successful append with correct expected version, got error: %v", err)
+	}
+
+	// Should fail when trying to append with wrong expected version
+	events3 := []eventstore.Event{
+		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
+	}
+	err = store.Append("test-stream", events3, 1)
+	if err == nil {
+		t.Fatal("Expected error when appending with wrong expected version")
+	}
+}
+
+func TestInMemoryEventStore_ExpectedVersion_NoCheck(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	events := []eventstore.Event{
+		{Type: "TestEvent", Data: []byte(`{"test": "data"}`)},
+	}
+
+	// Should always succeed with expectedVersion -1 (no check)
+	err := store.Append("test-stream", events, -1)
+	if err != nil {
+		t.Fatalf("Expected successful append with version -1, got error: %v", err)
+	}
+
+	// Should succeed again with expectedVersion -1
+	err = store.Append("test-stream", events, -1)
+	if err != nil {
+		t.Fatalf("Expected successful append with version -1, got error: %v", err)
 	}
 }

@@ -65,7 +65,7 @@ func (s *PostgresEventStore) initSchema() error {
 }
 
 // Append adds new events to the given stream.
-func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event) error {
+func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -87,6 +87,16 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event) 
 	err = tx.QueryRow("SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1", streamID).Scan(&maxVersion)
 	if err != nil {
 		return fmt.Errorf("failed to get max version: %w", err)
+	}
+
+	// Check expected version for optimistic concurrency control
+	if expectedVersion != -1 {
+		if expectedVersion == 0 && maxVersion != 0 {
+			return fmt.Errorf("expected new stream (version 0) but stream already exists with %d events", maxVersion)
+		}
+		if expectedVersion > 0 && maxVersion != int64(expectedVersion) {
+			return fmt.Errorf("expected version %d but stream is at version %d", expectedVersion, maxVersion)
+		}
 	}
 
 	// Prepare the insert statement

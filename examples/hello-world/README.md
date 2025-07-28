@@ -26,15 +26,17 @@ cd integration_test
 docker-compose -f docker-compose.test.yaml up -d postgres
 ```
 
-Wait for PostgreSQL to be ready, then run:
+Wait for PostgreSQL to be ready, then change to the example directory and run:
 
 ```bash
+cd examples/hello-world
 go run main.go -backend=postgres
 ```
 
 You can also specify a custom PostgreSQL connection string:
 
 ```bash
+cd examples/hello-world
 go run main.go -backend=postgres -postgres-conn="host=localhost port=5432 user=myuser password=mypass dbname=mydb sslmode=disable"
 ```
 

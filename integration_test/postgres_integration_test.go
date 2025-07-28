@@ -50,7 +50,7 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 	}
 
 	streamID := "integration-test-stream-" + time.Now().Format("20060102150405")
-	err = store.Append(streamID, events)
+	err = store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 	}
 
 	streamID := "version-test-stream-" + time.Now().Format("20060102150405")
-	err = store.Append(streamID, events)
+	err = store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 	}
 
 	streamID := "limit-test-stream-" + time.Now().Format("20060102150405")
-	err = store.Append(streamID, events)
+	err = store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestPostgresEventStore_Integration_PreservesEventData(t *testing.T) {
 	}
 
 	streamID := "preserve-test-stream-" + time.Now().Format("20060102150405")
-	err = store.Append(streamID, []eventstore.Event{originalEvent})
+	err = store.Append(streamID, []eventstore.Event{originalEvent}, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 					},
 				},
 			}
-			done <- store.Append(streamID, events)
+			done <- store.Append(streamID, events, -1)
 		}(i)
 	}
 	
