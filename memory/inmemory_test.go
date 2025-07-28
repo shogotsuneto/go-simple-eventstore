@@ -149,7 +149,6 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 }
 
-
 func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 	store := NewInMemoryEventStore()
 
@@ -288,7 +287,7 @@ func TestInMemoryEventStore_ExpectedVersion_NoCheck(t *testing.T) {
 
 func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 	store := NewInMemoryEventStore()
-	
+
 	events := []eventstore.Event{
 		{Type: "TestEvent", Data: []byte(`{"test": "data"}`)},
 	}
@@ -296,7 +295,7 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 	// Test ErrStreamAlreadyExists error type
 	t.Run("StreamAlreadyExists", func(t *testing.T) {
 		streamID := "conflict-stream-1"
-		
+
 		// Create stream with expectedVersion 0
 		err := store.Append(streamID, events, 0)
 		if err != nil {
@@ -333,7 +332,7 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 	// Test ErrVersionMismatch error type
 	t.Run("VersionMismatch", func(t *testing.T) {
 		streamID := "conflict-stream-2"
-		
+
 		// Create stream first
 		err := store.Append(streamID, events, 0)
 		if err != nil {
@@ -373,7 +372,7 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 	// Test another version mismatch scenario
 	t.Run("VersionMismatchHigher", func(t *testing.T) {
 		streamID := "conflict-stream-3"
-		
+
 		// Create stream first
 		err := store.Append(streamID, events, 0)
 		if err != nil {
