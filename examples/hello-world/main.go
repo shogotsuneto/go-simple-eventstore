@@ -2,11 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	eventstore "github.com/shogotsuneto/go-simple-eventstore"
 	"github.com/shogotsuneto/go-simple-eventstore/memory"
+	"github.com/shogotsuneto/go-simple-eventstore/postgres"
 )
 
 // UserCreated represents a domain event when a user is created
@@ -24,11 +27,36 @@ type UserEmailChanged struct {
 }
 
 func main() {
+	// Command-line flags for backend selection
+	var backend = flag.String("backend", "memory", "Event store backend: memory or postgres")
+	var pgConnStr = flag.String("postgres-conn", "host=localhost port=5432 user=test password=test dbname=eventstore_test sslmode=disable", "PostgreSQL connection string")
+	flag.Parse()
+
 	fmt.Println("🚀 Go Simple EventStore - Hello World Example")
 	fmt.Println("============================================")
+	fmt.Printf("Using backend: %s\n", *backend)
 
-	// Create a new in-memory event store
-	store := memory.NewInMemoryEventStore()
+	// Create event store based on backend selection
+	var store eventstore.EventStore
+	var err error
+
+	switch *backend {
+	case "memory":
+		store = memory.NewInMemoryEventStore()
+		fmt.Println("✅ In-memory event store created")
+	case "postgres":
+		pgStore, pgErr := postgres.NewPostgresEventStore(*pgConnStr)
+		if pgErr != nil {
+			log.Fatalf("Failed to create PostgreSQL event store: %v", pgErr)
+		}
+		store = pgStore
+		defer pgStore.Close()
+		fmt.Println("✅ PostgreSQL event store created")
+	default:
+		fmt.Printf("❌ Unknown backend: %s\n", *backend)
+		fmt.Println("Available backends: memory, postgres")
+		os.Exit(1)
+	}
 
 	// Create some domain events
 	userCreatedData, _ := json.Marshal(UserCreated{
@@ -67,7 +95,7 @@ func main() {
 	streamID := "user-123"
 	fmt.Printf("\n📝 Appending %d events to stream '%s'...\n", len(events), streamID)
 
-	err := store.Append(streamID, events)
+	err = store.Append(streamID, events)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
