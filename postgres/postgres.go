@@ -10,14 +10,31 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-// PostgresEventStore is a PostgreSQL implementation of EventStore.
-type PostgresEventStore struct {
-	db *sql.DB
+// Config contains configuration options for PostgresEventStore.
+type Config struct {
+	// ConnectionString is the PostgreSQL connection string
+	ConnectionString string
+	// TableName is the name of the table to store events. Defaults to "events" if empty.
+	TableName string
 }
 
-// NewPostgresEventStore creates a new PostgreSQL event store.
+// PostgresEventStore is a PostgreSQL implementation of EventStore.
+type PostgresEventStore struct {
+	db        *sql.DB
+	tableName string
+}
+
+// NewPostgresEventStore creates a new PostgreSQL event store with default table name "events".
 func NewPostgresEventStore(connectionString string) (*PostgresEventStore, error) {
-	db, err := sql.Open("postgres", connectionString)
+	return NewPostgresEventStoreWithConfig(Config{
+		ConnectionString: connectionString,
+		TableName:        "events",
+	})
+}
+
+// NewPostgresEventStoreWithConfig creates a new PostgreSQL event store with the given configuration.
+func NewPostgresEventStoreWithConfig(config Config) (*PostgresEventStore, error) {
+	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
@@ -26,7 +43,15 @@ func NewPostgresEventStore(connectionString string) (*PostgresEventStore, error)
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	store := &PostgresEventStore{db: db}
+	tableName := config.TableName
+	if tableName == "" {
+		tableName = "events"
+	}
+
+	store := &PostgresEventStore{
+		db:        db,
+		tableName: tableName,
+	}
 
 	return store, nil
 }
@@ -38,8 +63,8 @@ func (s *PostgresEventStore) Close() error {
 
 // InitSchema creates the necessary tables and indexes if they don't exist.
 func (s *PostgresEventStore) InitSchema() error {
-	query := `
-	CREATE TABLE IF NOT EXISTS events (
+	query := fmt.Sprintf(`
+	CREATE TABLE IF NOT EXISTS %s (
 		id SERIAL PRIMARY KEY,
 		stream_id VARCHAR(255) NOT NULL,
 		version BIGINT NOT NULL,
@@ -50,9 +75,9 @@ func (s *PostgresEventStore) InitSchema() error {
 		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_events_stream_id ON events(stream_id);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
-	`
+	CREATE INDEX IF NOT EXISTS idx_%s_stream_id ON %s(stream_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_%s_stream_version ON %s(stream_id, version);
+	`, s.tableName, s.tableName, s.tableName, s.tableName, s.tableName)
 
 	_, err := s.db.Exec(query)
 	return err
@@ -78,7 +103,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 	// Get the current maximum version for this stream
 	var maxVersion int64
-	err = tx.QueryRow("SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1", streamID).Scan(&maxVersion)
+	err = tx.QueryRow(fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE stream_id = $1", s.tableName), streamID).Scan(&maxVersion)
 	if err != nil {
 		return fmt.Errorf("failed to get max version: %w", err)
 	}
@@ -101,10 +126,10 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	}
 
 	// Prepare the insert statement
-	stmt, err := tx.Prepare(`
-		INSERT INTO events (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
+	stmt, err := tx.Prepare(fmt.Sprintf(`
+		INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`)
+	`, s.tableName))
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -143,12 +168,12 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 // Load retrieves events for the given stream using the specified options.
 func (s *PostgresEventStore) Load(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT event_id, event_type, event_data, metadata, timestamp, version
-		FROM events
+		FROM %s
 		WHERE stream_id = $1 AND version > $2
 		ORDER BY version ASC
-	`
+	`, s.tableName)
 
 	args := []interface{}{streamID, opts.FromVersion}
 

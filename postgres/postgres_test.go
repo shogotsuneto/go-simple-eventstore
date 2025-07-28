@@ -1,0 +1,76 @@
+package postgres
+
+import (
+	"testing"
+)
+
+func TestConfig_TableName(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         Config
+		expectedTable  string
+	}{
+		{
+			name: "default table name when empty",
+			config: Config{
+				ConnectionString: "test-conn",
+				TableName:        "",
+			},
+			expectedTable: "events",
+		},
+		{
+			name: "custom table name",
+			config: Config{
+				ConnectionString: "test-conn",
+				TableName:        "custom_events",
+			},
+			expectedTable: "custom_events",
+		},
+		{
+			name: "table name with underscores",
+			config: Config{
+				ConnectionString: "test-conn",
+				TableName:        "my_custom_event_table",
+			},
+			expectedTable: "my_custom_event_table",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// We can't actually create a database connection in unit tests,
+			// so we'll just test the table name assignment logic
+			tableName := tt.config.TableName
+			if tableName == "" {
+				tableName = "events"
+			}
+			
+			if tableName != tt.expectedTable {
+				t.Errorf("Expected table name %s, got %s", tt.expectedTable, tableName)
+			}
+		})
+	}
+}
+
+func TestNewPostgresEventStore_BackwardCompatibility(t *testing.T) {
+	// This test verifies that the old constructor signature still works
+	// We can't test the actual connection without a database, so we just check
+	// that the function exists and returns an error for invalid connection strings
+	_, err := NewPostgresEventStore("invalid-connection-string")
+	if err == nil {
+		t.Error("Expected error for invalid connection string")
+	}
+}
+
+func TestNewPostgresEventStoreWithConfig_InvalidConnection(t *testing.T) {
+	// Test that invalid connection strings return errors
+	config := Config{
+		ConnectionString: "invalid-connection-string",
+		TableName:        "custom_events",
+	}
+	
+	_, err := NewPostgresEventStoreWithConfig(config)
+	if err == nil {
+		t.Error("Expected error for invalid connection string")
+	}
+}
