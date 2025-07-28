@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 
 	eventstore "github.com/shogotsuneto/go-simple-eventstore"
-	"github.com/shogotsuneto/go-simple-eventstore/memory"
+	"github.com/shogotsuneto/go-simple-eventstore/postgres"
 )
 
 // UserCreated represents a domain event when a user is created
@@ -24,11 +25,27 @@ type UserEmailChanged struct {
 }
 
 func main() {
-	fmt.Println("🚀 Go Simple EventStore - Hello World Example")
-	fmt.Println("============================================")
+	// Command-line flags for PostgreSQL connection
+	var pgConnStr = flag.String("postgres-conn", "host=localhost port=5432 user=test password=test dbname=eventstore_test sslmode=disable", "PostgreSQL connection string")
+	flag.Parse()
 
-	// Create a new in-memory event store
-	store := memory.NewInMemoryEventStore()
+	fmt.Println("🚀 Go Simple EventStore - PostgreSQL Example")
+	fmt.Println("============================================")
+	fmt.Printf("Connecting to PostgreSQL...\n")
+
+	// Create PostgreSQL event store
+	store, err := postgres.NewPostgresEventStore(*pgConnStr)
+	if err != nil {
+		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
+	defer store.Close()
+
+	// Initialize the database schema
+	fmt.Println("🔧 Initializing database schema...")
+	if err := store.InitSchema(); err != nil {
+		log.Fatalf("Failed to initialize schema: %v", err)
+	}
+	fmt.Println("✅ PostgreSQL event store ready")
 
 	// Create some domain events
 	userCreatedData, _ := json.Marshal(UserCreated{
@@ -67,7 +84,7 @@ func main() {
 	streamID := "user-123"
 	fmt.Printf("\n📝 Appending %d events to stream '%s'...\n", len(events), streamID)
 
-	err := store.Append(streamID, events, -1)
+	err = store.Append(streamID, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
@@ -110,5 +127,35 @@ func main() {
 		fmt.Printf("  Event Type: %s, Version: %d\n", event.Type, event.Version)
 	}
 
-	fmt.Println("\n🎉 Hello World example completed successfully!")
+	// Demonstrate optimistic concurrency control
+	fmt.Println("\n🔐 Demonstrating optimistic concurrency control...")
+	
+	// First append with expected version 2 (should succeed since we have 2 events)
+	moreEvents := []eventstore.Event{
+		{
+			Type: "UserActivated",
+			Data: []byte(`{"user_id": "user-123", "activated": true}`),
+			Metadata: map[string]string{
+				"source": "user-service",
+				"reason": "activation",
+			},
+		},
+	}
+
+	err = store.Append(streamID, moreEvents, 2)
+	if err != nil {
+		log.Printf("Expected append failed: %v", err)
+	} else {
+		fmt.Println("✅ Append with expected version 2 succeeded")
+	}
+
+	// Try to append with wrong expected version (should fail)
+	err = store.Append(streamID, moreEvents, 1)
+	if err != nil {
+		fmt.Printf("✅ Append with wrong expected version correctly failed: %v\n", err)
+	} else {
+		fmt.Println("❌ Append with wrong expected version should have failed")
+	}
+
+	fmt.Println("\n🎉 PostgreSQL example completed successfully!")
 }

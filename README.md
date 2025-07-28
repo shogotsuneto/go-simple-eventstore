@@ -30,15 +30,82 @@ type EventStore interface {
 
 ### Implemented
 - **In-Memory** - Simple in-memory implementation (suitable for testing and development)
+- **PostgreSQL** - Reliable relational database adapter with full ACID compliance
 
 ### Work In Progress (WIP)
-- **PostgreSQL** - Reliable relational database adapter (WIP)
 - **DynamoDB** - AWS NoSQL database adapter (WIP)
 - **More adapters coming** - Extensible design allows for easy addition of new database backends
 
 ## 🚀 Getting Started
 
-*Documentation for installation and usage will be added as the library develops.*
+### Quick Start with In-Memory Backend
+
+```go
+package main
+
+import (
+    "github.com/shogotsuneto/go-simple-eventstore"
+    "github.com/shogotsuneto/go-simple-eventstore/memory"
+)
+
+func main() {
+    // Create an in-memory event store
+    store := memory.NewInMemoryEventStore()
+    
+    // Define some events
+    events := []eventstore.Event{
+        {
+            Type: "UserCreated",
+            Data: []byte(`{"user_id": "123", "name": "John Doe"}`),
+            Metadata: map[string]string{"source": "user-service"},
+        },
+    }
+    
+    // Append events to a stream
+    err := store.Append("user-123", events)
+    if err != nil {
+        panic(err)
+    }
+    
+    // Load events from the stream
+    loadedEvents, err := store.Load("user-123", eventstore.LoadOptions{
+        FromVersion: 0,
+        Limit: 10,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // Process loaded events...
+}
+```
+
+### Using PostgreSQL Backend
+
+```go
+package main
+
+import (
+    "github.com/shogotsuneto/go-simple-eventstore"
+    "github.com/shogotsuneto/go-simple-eventstore/postgres"
+)
+
+func main() {
+    // Create a PostgreSQL event store
+    store, err := postgres.NewPostgresEventStore("host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable")
+    if err != nil {
+        panic(err)
+    }
+    defer store.Close()
+    
+    // Use the same interface as in-memory...
+    // The rest of the code is identical!
+}
+```
+
+### Running the Example
+
+See the [hello-world example](examples/hello-world/) for a complete demonstration of both backends.
 
 ## 📋 MVP Scope
 
@@ -48,6 +115,31 @@ This project focuses on the essential functionality needed for event sourcing:
 2. **Stream-based organization** - Events are organized by stream ID
 3. **Cursor-based loading** - Efficient event retrieval with pagination support
 4. **Database agnostic** - Unified interface across different storage backends
+
+## 🧪 Testing
+
+### Unit Tests
+
+Run unit tests for all adapters:
+
+```bash
+go test ./...
+```
+
+### Integration Tests
+
+Integration tests require a PostgreSQL database. You can use Docker Compose to start one:
+
+```bash
+cd integration_test
+docker compose -f docker-compose.test.yaml up -d postgres
+```
+
+Then run the integration tests:
+
+```bash
+go test -tags=integration ./integration_test -v
+```
 
 ## 🤝 Contributing
 

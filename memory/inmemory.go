@@ -23,7 +23,7 @@ func NewInMemoryEventStore() *InMemoryEventStore {
 }
 
 // Append adds new events to the given stream.
-func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event) error {
+func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -33,6 +33,24 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event) 
 
 	// Get current stream (nil if stream does not exist)
 	stream := s.streams[streamID]
+	currentVersion := int64(len(stream))
+
+	// Check expected version for optimistic concurrency control
+	if expectedVersion != -1 {
+		if expectedVersion == 0 && currentVersion != 0 {
+			return &eventstore.ErrStreamAlreadyExists{
+				StreamID:      streamID,
+				ActualVersion: currentVersion,
+			}
+		}
+		if expectedVersion > 0 && currentVersion != int64(expectedVersion) {
+			return &eventstore.ErrVersionMismatch{
+				StreamID:        streamID,
+				ExpectedVersion: expectedVersion,
+				ActualVersion:   currentVersion,
+			}
+		}
+	}
 
 	// Set version and timestamp for each event
 	for i := range events {
