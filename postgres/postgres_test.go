@@ -4,6 +4,54 @@ import (
 	"testing"
 )
 
+func TestQuoteIdentifier(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple table name",
+			input:    "events",
+			expected: `"events"`,
+		},
+		{
+			name:     "table name with underscores",
+			input:    "custom_events",
+			expected: `"custom_events"`,
+		},
+		{
+			name:     "table name with spaces",
+			input:    "my events",
+			expected: `"my events"`,
+		},
+		{
+			name:     "table name with double quotes",
+			input:    `table"name`,
+			expected: `"table""name"`,
+		},
+		{
+			name:     "table name with multiple double quotes",
+			input:    `"table""name"`,
+			expected: `"""table""""name"""`,
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: `""`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := quoteIdentifier(tt.input)
+			if result != tt.expected {
+				t.Errorf("quoteIdentifier(%q) = %q, expected %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestConfig_TableName(t *testing.T) {
 	tests := []struct {
 		name           string

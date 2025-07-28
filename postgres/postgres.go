@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
@@ -56,6 +57,15 @@ func NewPostgresEventStoreWithConfig(config Config) (*PostgresEventStore, error)
 	return store, nil
 }
 
+// quoteIdentifier properly quotes a PostgreSQL identifier (table name, column name, etc.)
+// to handle special characters and prevent SQL injection.
+func quoteIdentifier(identifier string) string {
+	// Replace any double quotes with double-double quotes to escape them
+	escaped := strings.ReplaceAll(identifier, `"`, `""`)
+	// Wrap in double quotes
+	return `"` + escaped + `"`
+}
+
 // Close closes the database connection.
 func (s *PostgresEventStore) Close() error {
 	return s.db.Close()
@@ -63,6 +73,7 @@ func (s *PostgresEventStore) Close() error {
 
 // InitSchema creates the necessary tables and indexes if they don't exist.
 func (s *PostgresEventStore) InitSchema() error {
+	tableName := quoteIdentifier(s.tableName)
 	query := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS %s (
 		id SERIAL PRIMARY KEY,
@@ -75,9 +86,11 @@ func (s *PostgresEventStore) InitSchema() error {
 		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_%s_stream_id ON %s(stream_id);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_%s_stream_version ON %s(stream_id, version);
-	`, s.tableName, s.tableName, s.tableName, s.tableName, s.tableName)
+	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
+	`, tableName, 
+	   quoteIdentifier("idx_"+s.tableName+"_stream_id"), tableName,
+	   quoteIdentifier("idx_"+s.tableName+"_stream_version"), tableName)
 
 	_, err := s.db.Exec(query)
 	return err
@@ -103,7 +116,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 	// Get the current maximum version for this stream
 	var maxVersion int64
-	err = tx.QueryRow(fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE stream_id = $1", s.tableName), streamID).Scan(&maxVersion)
+	err = tx.QueryRow(fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE stream_id = $1", quoteIdentifier(s.tableName)), streamID).Scan(&maxVersion)
 	if err != nil {
 		return fmt.Errorf("failed to get max version: %w", err)
 	}
@@ -129,7 +142,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	stmt, err := tx.Prepare(fmt.Sprintf(`
 		INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, s.tableName))
+	`, quoteIdentifier(s.tableName)))
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -173,7 +186,7 @@ func (s *PostgresEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 		FROM %s
 		WHERE stream_id = $1 AND version > $2
 		ORDER BY version ASC
-	`, s.tableName)
+	`, quoteIdentifier(s.tableName))
 
 	args := []interface{}{streamID, opts.FromVersion}
 
