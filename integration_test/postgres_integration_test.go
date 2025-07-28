@@ -297,3 +297,146 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 		}
 	}
 }
+
+func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) {
+	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
+	defer store.Close()
+
+	streamID := "expected-version-new-stream-" + time.Now().Format("20060102150405")
+	
+	events := []eventstore.Event{
+		{Type: "TestEvent", Data: []byte(`{"test": "data"}`)},
+	}
+
+	// Should succeed when creating a new stream with expectedVersion 0
+	err = store.Append(streamID, events, 0)
+	if err != nil {
+		t.Fatalf("Expected successful append to new stream with version 0, got error: %v", err)
+	}
+
+	// Verify the event was stored
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if len(loadedEvents) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Version != 1 {
+		t.Errorf("Expected event version to be 1, got %d", loadedEvents[0].Version)
+	}
+
+	// Should fail when trying to create the same stream again with expectedVersion 0
+	err = store.Append(streamID, events, 0)
+	if err == nil {
+		t.Fatal("Expected error when trying to create existing stream with version 0")
+	}
+}
+
+func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T) {
+	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
+	defer store.Close()
+
+	streamID := "expected-version-exact-match-" + time.Now().Format("20060102150405")
+
+	// Create initial event
+	events1 := []eventstore.Event{
+		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
+	}
+	err = store.Append(streamID, events1, 0)
+	if err != nil {
+		t.Fatalf("Failed to create stream: %v", err)
+	}
+
+	// Should succeed when appending to version 1
+	events2 := []eventstore.Event{
+		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
+	}
+	err = store.Append(streamID, events2, 1)
+	if err != nil {
+		t.Fatalf("Expected successful append with correct expected version, got error: %v", err)
+	}
+
+	// Verify both events were stored
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if len(loadedEvents) != 2 {
+		t.Fatalf("Expected 2 events, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Version != 1 {
+		t.Errorf("Expected first event version to be 1, got %d", loadedEvents[0].Version)
+	}
+	if loadedEvents[1].Version != 2 {
+		t.Errorf("Expected second event version to be 2, got %d", loadedEvents[1].Version)
+	}
+
+	// Should fail when trying to append with wrong expected version
+	events3 := []eventstore.Event{
+		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
+	}
+	err = store.Append(streamID, events3, 1)
+	if err == nil {
+		t.Fatal("Expected error when appending with wrong expected version")
+	}
+
+	// Should also fail when trying to append with a higher expected version
+	err = store.Append(streamID, events3, 5)
+	if err == nil {
+		t.Fatal("Expected error when appending with higher expected version")
+	}
+}
+
+func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
+	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
+	defer store.Close()
+
+	streamID := "expected-version-no-check-" + time.Now().Format("20060102150405")
+	
+	events := []eventstore.Event{
+		{Type: "TestEvent", Data: []byte(`{"test": "data"}`)},
+	}
+
+	// Should always succeed with expectedVersion -1 (no check)
+	err = store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Expected successful append with version -1, got error: %v", err)
+	}
+
+	// Should succeed again with expectedVersion -1
+	err = store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Expected successful append with version -1, got error: %v", err)
+	}
+
+	// Verify both events were stored
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if len(loadedEvents) != 2 {
+		t.Fatalf("Expected 2 events, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Version != 1 {
+		t.Errorf("Expected first event version to be 1, got %d", loadedEvents[0].Version)
+	}
+	if loadedEvents[1].Version != 2 {
+		t.Errorf("Expected second event version to be 2, got %d", loadedEvents[1].Version)
+	}
+}
