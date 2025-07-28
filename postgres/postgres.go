@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shogotsuneto/go-simple-eventstore"
 	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
 // PostgresEventStore is a PostgreSQL implementation of EventStore.

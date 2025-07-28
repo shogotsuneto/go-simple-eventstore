@@ -151,4 +151,4 @@ This project welcomes contributions! The goal is to maintain simplicity while ad
 
 ## 📄 License
 
-*License information will be added soon.*
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

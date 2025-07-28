@@ -129,7 +129,7 @@ func main() {
 
 	// Demonstrate optimistic concurrency control
 	fmt.Println("\n🔐 Demonstrating optimistic concurrency control...")
-	
+
 	// First append with expected version 2 (should succeed since we have 2 events)
 	moreEvents := []eventstore.Event{
 		{
