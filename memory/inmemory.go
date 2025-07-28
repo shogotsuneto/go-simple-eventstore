@@ -38,10 +38,17 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {
 		if expectedVersion == 0 && currentVersion != 0 {
-			return fmt.Errorf("expected new stream (version 0) but stream already exists with %d events", currentVersion)
+			return &eventstore.ErrStreamAlreadyExists{
+				StreamID:      streamID,
+				ActualVersion: currentVersion,
+			}
 		}
 		if expectedVersion > 0 && currentVersion != int64(expectedVersion) {
-			return fmt.Errorf("expected version %d but stream is at version %d", expectedVersion, currentVersion)
+			return &eventstore.ErrVersionMismatch{
+				StreamID:        streamID,
+				ExpectedVersion: expectedVersion,
+				ActualVersion:   currentVersion,
+			}
 		}
 	}
 

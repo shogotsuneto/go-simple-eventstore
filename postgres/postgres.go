@@ -92,10 +92,17 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {
 		if expectedVersion == 0 && maxVersion != 0 {
-			return fmt.Errorf("expected new stream (version 0) but stream already exists with %d events", maxVersion)
+			return &eventstore.ErrStreamAlreadyExists{
+				StreamID:      streamID,
+				ActualVersion: maxVersion,
+			}
 		}
 		if expectedVersion > 0 && maxVersion != int64(expectedVersion) {
-			return fmt.Errorf("expected version %d but stream is at version %d", expectedVersion, maxVersion)
+			return &eventstore.ErrVersionMismatch{
+				StreamID:        streamID,
+				ExpectedVersion: expectedVersion,
+				ActualVersion:   maxVersion,
+			}
 		}
 	}
 

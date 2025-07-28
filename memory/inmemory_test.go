@@ -1,6 +1,8 @@
 package memory
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -282,4 +284,120 @@ func TestInMemoryEventStore_ExpectedVersion_NoCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected successful append with version -1, got error: %v", err)
 	}
+}
+
+func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
+	store := NewInMemoryEventStore()
+	
+	events := []eventstore.Event{
+		{Type: "TestEvent", Data: []byte(`{"test": "data"}`)},
+	}
+
+	// Test ErrStreamAlreadyExists error type
+	t.Run("StreamAlreadyExists", func(t *testing.T) {
+		streamID := "conflict-stream-1"
+		
+		// Create stream with expectedVersion 0
+		err := store.Append(streamID, events, 0)
+		if err != nil {
+			t.Fatalf("Failed to create stream: %v", err)
+		}
+
+		// Try to create the same stream again with expectedVersion 0
+		err = store.Append(streamID, events, 0)
+		if err == nil {
+			t.Fatal("Expected error when trying to create existing stream")
+		}
+
+		// Verify it's the correct error type
+		var streamExistsErr *eventstore.ErrStreamAlreadyExists
+		if !errors.As(err, &streamExistsErr) {
+			t.Fatalf("Expected ErrStreamAlreadyExists, got %T: %v", err, err)
+		}
+
+		// Verify error details
+		if streamExistsErr.StreamID != streamID {
+			t.Errorf("Expected StreamID %s, got %s", streamID, streamExistsErr.StreamID)
+		}
+		if streamExistsErr.ActualVersion != 1 {
+			t.Errorf("Expected ActualVersion 1, got %d", streamExistsErr.ActualVersion)
+		}
+
+		// Verify error message
+		expectedMsg := fmt.Sprintf("expected new stream '%s' (version 0) but stream already exists with 1 events", streamID)
+		if streamExistsErr.Error() != expectedMsg {
+			t.Errorf("Expected error message '%s', got '%s'", expectedMsg, streamExistsErr.Error())
+		}
+	})
+
+	// Test ErrVersionMismatch error type
+	t.Run("VersionMismatch", func(t *testing.T) {
+		streamID := "conflict-stream-2"
+		
+		// Create stream first
+		err := store.Append(streamID, events, 0)
+		if err != nil {
+			t.Fatalf("Failed to create stream: %v", err)
+		}
+
+		// Try to append with wrong expected version (should expect 1, not 2)
+		err = store.Append(streamID, events, 2) // Stream is at version 1, expecting 2
+		if err == nil {
+			t.Fatal("Expected error when appending with wrong expected version")
+		}
+
+		// Verify it's the correct error type
+		var versionMismatchErr *eventstore.ErrVersionMismatch
+		if !errors.As(err, &versionMismatchErr) {
+			t.Fatalf("Expected ErrVersionMismatch, got %T: %v", err, err)
+		}
+
+		// Verify error details
+		if versionMismatchErr.StreamID != streamID {
+			t.Errorf("Expected StreamID %s, got %s", streamID, versionMismatchErr.StreamID)
+		}
+		if versionMismatchErr.ExpectedVersion != 2 {
+			t.Errorf("Expected ExpectedVersion 2, got %d", versionMismatchErr.ExpectedVersion)
+		}
+		if versionMismatchErr.ActualVersion != 1 {
+			t.Errorf("Expected ActualVersion 1, got %d", versionMismatchErr.ActualVersion)
+		}
+
+		// Verify error message
+		expectedMsg := fmt.Sprintf("expected version 2 but stream '%s' is at version 1", streamID)
+		if versionMismatchErr.Error() != expectedMsg {
+			t.Errorf("Expected error message '%s', got '%s'", expectedMsg, versionMismatchErr.Error())
+		}
+	})
+
+	// Test another version mismatch scenario
+	t.Run("VersionMismatchHigher", func(t *testing.T) {
+		streamID := "conflict-stream-3"
+		
+		// Create stream first
+		err := store.Append(streamID, events, 0)
+		if err != nil {
+			t.Fatalf("Failed to create stream: %v", err)
+		}
+
+		// Try to append with higher expected version
+		err = store.Append(streamID, events, 5) // Stream is at version 1, expecting 5
+		if err == nil {
+			t.Fatal("Expected error when appending with higher expected version")
+		}
+
+		// Verify it's the correct error type
+		var versionMismatchErr *eventstore.ErrVersionMismatch
+		if !errors.As(err, &versionMismatchErr) {
+			t.Fatalf("Expected ErrVersionMismatch, got %T: %v", err, err)
+		}
+
+		// Verify error details
+		if versionMismatchErr.ExpectedVersion != 5 {
+			t.Errorf("Expected ExpectedVersion 5, got %d", versionMismatchErr.ExpectedVersion)
+		}
+		if versionMismatchErr.ActualVersion != 1 {
+			t.Errorf("Expected ActualVersion 1, got %d", versionMismatchErr.ActualVersion)
+		}
+	})
 }
