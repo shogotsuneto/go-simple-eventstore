@@ -27,11 +27,21 @@ func getTestConnectionString() string {
 	return connStr
 }
 
-func TestPostgresEventStore_Integration_Append(t *testing.T) {
+func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
 	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
+	
+	if err := store.InitSchema(); err != nil {
+		t.Fatalf("Failed to initialize schema: %v", err)
+	}
+	
+	return store
+}
+
+func TestPostgresEventStore_Integration_Append(t *testing.T) {
+	store := setupTestStore(t)
 	defer store.Close()
 
 	events := []eventstore.Event{
@@ -101,10 +111,7 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	streamID := "non-existent-stream-" + time.Now().Format("20060102150405")
@@ -119,10 +126,7 @@ func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	// Add some events
@@ -157,10 +161,7 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	// Add some events
@@ -195,10 +196,7 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_PreservesEventData(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	originalEvent := eventstore.Event{
@@ -247,10 +245,7 @@ func TestPostgresEventStore_Integration_PreservesEventData(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	streamID := "concurrent-test-stream-" + time.Now().Format("20060102150405")
@@ -301,10 +296,7 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	streamID := "expected-version-new-stream-" + time.Now().Format("20060102150405")
@@ -341,10 +333,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	streamID := "expected-version-exact-match-" + time.Now().Format("20060102150405")
@@ -401,10 +390,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	streamID := "expected-version-no-check-" + time.Now().Format("20060102150405")
@@ -444,10 +430,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
-	}
+	store := setupTestStore(t)
 	defer store.Close()
 
 	streamID := "conflict-test-stream-" + time.Now().Format("20060102150405")

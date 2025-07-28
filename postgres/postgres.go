@@ -28,11 +28,6 @@ func NewPostgresEventStore(connectionString string) (*PostgresEventStore, error)
 
 	store := &PostgresEventStore{db: db}
 
-	// Initialize the database schema
-	if err := store.initSchema(); err != nil {
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
 	return store, nil
 }
 
@@ -41,8 +36,8 @@ func (s *PostgresEventStore) Close() error {
 	return s.db.Close()
 }
 
-// initSchema creates the necessary tables and indexes if they don't exist.
-func (s *PostgresEventStore) initSchema() error {
+// InitSchema creates the necessary tables and indexes if they don't exist.
+func (s *PostgresEventStore) InitSchema() error {
 	query := `
 	CREATE TABLE IF NOT EXISTS events (
 		id SERIAL PRIMARY KEY,
@@ -57,7 +52,7 @@ func (s *PostgresEventStore) initSchema() error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_events_stream_id ON events(stream_id);
-	CREATE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
 	`
 
 	_, err := s.db.Exec(query)
