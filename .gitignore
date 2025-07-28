@@ -10,6 +10,13 @@ coverage.out
 *.dylib
 main
 
+# Example binaries
+examples/*/main
+examples/*/*.exe
+examples/custom-table-example/custom-table-example
+examples/postgres-example/postgres-example
+examples/hello-world/hello-world
+
 # Test binary, built with `go test -c`
 *.test
 
