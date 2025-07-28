@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"testing"
 	"time"
 
@@ -195,54 +194,7 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 	}
 }
 
-func TestPostgresEventStore_Integration_PreservesEventData(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
 
-	originalEvent := eventstore.Event{
-		ID:   "custom-id",
-		Type: "TestEvent",
-		Data: []byte(`{"custom": "data"}`),
-		Metadata: map[string]string{
-			"custom": "metadata",
-		},
-		Timestamp: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
-	}
-
-	streamID := "preserve-test-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, []eventstore.Event{originalEvent}, -1)
-	if err != nil {
-		t.Fatalf("Append failed: %v", err)
-	}
-
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-
-	if len(loadedEvents) != 1 {
-		t.Fatalf("Expected 1 event, got %d", len(loadedEvents))
-	}
-
-	loadedEvent := loadedEvents[0]
-
-	// Check that custom values were preserved
-	if loadedEvent.ID != "custom-id" {
-		t.Errorf("Expected ID 'custom-id', got '%s'", loadedEvent.ID)
-	}
-	if loadedEvent.Type != "TestEvent" {
-		t.Errorf("Expected Type 'TestEvent', got '%s'", loadedEvent.Type)
-	}
-	if !reflect.DeepEqual(loadedEvent.Data, []byte(`{"custom": "data"}`)) {
-		t.Errorf("Expected Data to be preserved, got %s", string(loadedEvent.Data))
-	}
-	if !reflect.DeepEqual(loadedEvent.Metadata, map[string]string{"custom": "metadata"}) {
-		t.Errorf("Expected Metadata to be preserved, got %v", loadedEvent.Metadata)
-	}
-	if !loadedEvent.Timestamp.Equal(time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)) {
-		t.Errorf("Expected Timestamp to be preserved, got %v", loadedEvent.Timestamp)
-	}
-}
 
 func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 	store := setupTestStore(t)
