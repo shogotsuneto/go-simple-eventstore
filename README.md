@@ -95,32 +95,7 @@ import (
 )
 
 func main() {
-    // Create a PostgreSQL event store with default table name "events"
-    store, err := postgres.NewPostgresEventStore("host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable")
-    if err != nil {
-        panic(err)
-    }
-    defer store.Close()
-    
-    // Use the same interface as in-memory...
-    // The rest of the code is identical!
-}
-```
-
-#### Custom Table Name
-
-You can configure a custom table name for storing events:
-
-```go
-package main
-
-import (
-    "github.com/shogotsuneto/go-simple-eventstore"
-    "github.com/shogotsuneto/go-simple-eventstore/postgres"
-)
-
-func main() {
-    // Create a PostgreSQL event store with custom table name
+    // Create a PostgreSQL event store (default table name is "events")
     store, err := postgres.NewPostgresEventStoreWithConfig(postgres.Config{
         ConnectionString: "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable",
         TableName:        "my_custom_events", // Custom table name
@@ -143,8 +118,6 @@ func main() {
 
 See the [hello-world example](examples/hello-world/) for a complete demonstration of both backends.
 
-For PostgreSQL with custom table names, see the [custom-table-example](examples/custom-table-example/).
-
 ### Running PostgreSQL Examples
 
 Make sure you have PostgreSQL running:
@@ -155,10 +128,6 @@ make start-postgres
 
 # Run the basic PostgreSQL example
 make run-postgres-example
-
-# Run the custom table name example
-cd examples/custom-table-example
-go run main.go --table-name="my_events"
 ```
 
 ## 📋 MVP Scope
