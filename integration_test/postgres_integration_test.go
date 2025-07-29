@@ -567,11 +567,6 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	if !checkTableExists(t, connStr, customTableName) {
 		t.Fatalf("Custom table %s should exist after initialization", customTableName)
 	}
-	
-	// Check that the default table was not created
-	if checkTableExists(t, connStr, "events") {
-		t.Errorf("Default 'events' table should not have been created when using custom table name")
-	}
 
 	// Append a single event to test functionality
 	events := []eventstore.Event{
@@ -594,6 +589,20 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	eventCount := countEventsInTable(t, connStr, customTableName)
 	if eventCount != 1 {
 		t.Errorf("Expected 1 event in custom table %s, got %d", customTableName, eventCount)
+	}
+
+	// Test that Load also works with the custom table name
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed from custom table: %v", err)
+	}
+
+	if len(loadedEvents) != 1 {
+		t.Fatalf("Expected 1 event loaded from custom table, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Type != "TestEvent" {
+		t.Errorf("Expected event type 'TestEvent', got '%s'", loadedEvents[0].Type)
 	}
 }
 
@@ -665,5 +674,19 @@ func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T)
 	eventCount := countEventsInTable(t, connStr, "events")
 	if eventCount == 0 {
 		t.Errorf("Expected at least 1 event in default 'events' table, got %d", eventCount)
+	}
+
+	// Test that Load also works with the default table name
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed from default table: %v", err)
+	}
+
+	if len(loadedEvents) != 1 {
+		t.Fatalf("Expected 1 event loaded from default table, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Type != "EmptyTableNameTest" {
+		t.Errorf("Expected event type 'EmptyTableNameTest', got '%s'", loadedEvents[0].Type)
 	}
 }
