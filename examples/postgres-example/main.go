@@ -36,17 +36,12 @@ func main() {
 	var store *postgres.PostgresEventStore
 	var err error
 
-	// Create PostgreSQL event store with custom table name if provided
-	if *tableName != "" {
-		fmt.Printf("Connecting to PostgreSQL with custom table name '%s'...\n", *tableName)
-		store, err = postgres.NewPostgresEventStoreWithConfig(postgres.Config{
-			ConnectionString: *pgConnStr,
-			TableName:        *tableName,
-		})
-	} else {
-		fmt.Printf("Connecting to PostgreSQL with default table name...\n")
-		store, err = postgres.NewPostgresEventStore(*pgConnStr)
-	}
+	// Create PostgreSQL event store
+	fmt.Printf("Connecting to PostgreSQL...\n")
+	store, err = postgres.NewPostgresEventStore(postgres.Config{
+		ConnectionString: *pgConnStr,
+		TableName:        *tableName, // Uses default "events" if empty
+	})
 
 	if err != nil {
 		log.Fatalf("Failed to create PostgreSQL event store: %v", err)

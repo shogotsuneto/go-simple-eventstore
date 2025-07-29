@@ -28,7 +28,10 @@ func getTestConnectionString() string {
 }
 
 func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
+	store, err := postgres.NewPostgresEventStore(postgres.Config{
+		ConnectionString: getTestConnectionString(),
+		TableName:        "events", // Explicit default table name
+	})
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
@@ -41,7 +44,7 @@ func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
 }
 
 func setupTestStoreWithConfig(t *testing.T, config postgres.Config) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStoreWithConfig(config)
+	store, err := postgres.NewPostgresEventStore(config)
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event store with config: %v", err)
 	}

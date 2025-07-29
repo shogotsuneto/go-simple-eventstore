@@ -25,16 +25,8 @@ type PostgresEventStore struct {
 	tableName string
 }
 
-// NewPostgresEventStore creates a new PostgreSQL event store with default table name "events".
-func NewPostgresEventStore(connectionString string) (*PostgresEventStore, error) {
-	return NewPostgresEventStoreWithConfig(Config{
-		ConnectionString: connectionString,
-		TableName:        "events",
-	})
-}
-
-// NewPostgresEventStoreWithConfig creates a new PostgreSQL event store with the given configuration.
-func NewPostgresEventStoreWithConfig(config Config) (*PostgresEventStore, error) {
+// NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
+func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
 	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)

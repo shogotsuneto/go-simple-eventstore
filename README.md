@@ -96,7 +96,7 @@ import (
 
 func main() {
     // Create a PostgreSQL event store (default table name is "events")
-    store, err := postgres.NewPostgresEventStoreWithConfig(postgres.Config{
+    store, err := postgres.NewPostgresEventStore(postgres.Config{
         ConnectionString: "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable",
         TableName:        "my_custom_events", // Custom table name
     })

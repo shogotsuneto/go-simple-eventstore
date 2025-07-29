@@ -100,24 +100,26 @@ func TestConfig_TableName(t *testing.T) {
 	}
 }
 
-func TestNewPostgresEventStore_BackwardCompatibility(t *testing.T) {
-	// This test verifies that the old constructor signature still works
-	// We can't test the actual connection without a database, so we just check
-	// that the function exists and returns an error for invalid connection strings
-	_, err := NewPostgresEventStore("invalid-connection-string")
+func TestNewPostgresEventStore_InvalidConnection(t *testing.T) {
+	// This test verifies that invalid connection strings return errors
+	config := Config{
+		ConnectionString: "invalid-connection-string",
+		TableName:        "events",
+	}
+	_, err := NewPostgresEventStore(config)
 	if err == nil {
 		t.Error("Expected error for invalid connection string")
 	}
 }
 
-func TestNewPostgresEventStoreWithConfig_InvalidConnection(t *testing.T) {
-	// Test that invalid connection strings return errors
+func TestNewPostgresEventStore_InvalidConnectionWithCustomTable(t *testing.T) {
+	// Test that invalid connection strings return errors with custom table names
 	config := Config{
 		ConnectionString: "invalid-connection-string",
 		TableName:        "custom_events",
 	}
 
-	_, err := NewPostgresEventStoreWithConfig(config)
+	_, err := NewPostgresEventStore(config)
 	if err == nil {
 		t.Error("Expected error for invalid connection string")
 	}
