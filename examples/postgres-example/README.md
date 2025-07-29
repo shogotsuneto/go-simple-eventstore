@@ -37,6 +37,16 @@ docker run --name postgres-eventstore \
    go run main.go -postgres-conn="host=localhost port=5432 user=myuser password=mypass dbname=mydb sslmode=disable"
    ```
 
+4. Run with custom table name:
+   ```bash
+   go run main.go -table-name="my_custom_events"
+   ```
+
+5. Run with both custom connection and table name:
+   ```bash
+   go run main.go -postgres-conn="host=localhost port=5432 user=myuser password=mypass dbname=mydb sslmode=disable" -table-name="user_events"
+   ```
+
 ## What the Example Does
 
 1. **Connects to PostgreSQL**: Establishes connection to the PostgreSQL database
@@ -53,6 +63,7 @@ docker run --name postgres-eventstore \
 - **Metadata Support**: Custom metadata is stored as JSONB
 - **Optimistic Concurrency**: Expected version checks prevent conflicts
 - **Query Options**: Loading events with version filtering and limits
+- **Custom Table Names**: Support for configurable table names (instead of default 'events')
 
 ## Output
 

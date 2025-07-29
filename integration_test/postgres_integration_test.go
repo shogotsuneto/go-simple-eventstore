@@ -4,6 +4,7 @@
 package integration_test
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -27,7 +28,10 @@ func getTestConnectionString() string {
 }
 
 func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStore(getTestConnectionString())
+	store, err := postgres.NewPostgresEventStore(postgres.Config{
+		ConnectionString: getTestConnectionString(),
+		TableName:        "events", // Explicit default table name
+	})
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
@@ -37,6 +41,61 @@ func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
 	}
 	
 	return store
+}
+
+func setupTestStoreWithConfig(t *testing.T, config postgres.Config) *postgres.PostgresEventStore {
+	store, err := postgres.NewPostgresEventStore(config)
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event store with config: %v", err)
+	}
+	
+	if err := store.InitSchema(); err != nil {
+		t.Fatalf("Failed to initialize schema: %v", err)
+	}
+	
+	return store
+}
+
+// Helper function to check if a table exists in the database
+func checkTableExists(t *testing.T, connectionString, tableName string) bool {
+	db, err := sql.Open("postgres", connectionString)
+	if err != nil {
+		t.Fatalf("Failed to open database connection: %v", err)
+	}
+	defer db.Close()
+	
+	var exists bool
+	query := `SELECT EXISTS (
+		SELECT FROM information_schema.tables 
+		WHERE table_schema = 'public' 
+		AND table_name = $1
+	)`
+	
+	err = db.QueryRow(query, tableName).Scan(&exists)
+	if err != nil {
+		t.Fatalf("Failed to check if table exists: %v", err)
+	}
+	
+	return exists
+}
+
+// Helper function to count events in a specific table
+func countEventsInTable(t *testing.T, connectionString, tableName string) int {
+	db, err := sql.Open("postgres", connectionString)
+	if err != nil {
+		t.Fatalf("Failed to open database connection: %v", err)
+	}
+	defer db.Close()
+	
+	var count int
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
+	
+	err = db.QueryRow(query).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count events in table %s: %v", tableName, err)
+	}
+	
+	return count
 }
 
 func TestPostgresEventStore_Integration_Append(t *testing.T) {
@@ -480,4 +539,152 @@ func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) 
 			t.Errorf("Expected ActualVersion 1, got %d", versionMismatchErr.ActualVersion)
 		}
 	})
+}
+
+// Tests for configurable table name functionality
+
+func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
+	customTableName := "custom_events_" + time.Now().Format("20060102150405")
+	
+	config := postgres.Config{
+		ConnectionString: getTestConnectionString(),
+		TableName:        customTableName,
+	}
+	
+	// First check that the custom table doesn't exist
+	connStr := getTestConnectionString()
+	if checkTableExists(t, connStr, customTableName) {
+		t.Fatalf("Custom table %s should not exist before initialization", customTableName)
+	}
+	
+	store := setupTestStoreWithConfig(t, config)
+	defer store.Close()
+
+	// Check that the custom table was created
+	if !checkTableExists(t, connStr, customTableName) {
+		t.Fatalf("Custom table %s should exist after initialization", customTableName)
+	}
+
+	// Append a single event to test functionality
+	events := []eventstore.Event{
+		{
+			Type: "TestEvent",
+			Data: []byte(`{"test": "data"}`),
+			Metadata: map[string]string{
+				"source": "test",
+			},
+		},
+	}
+
+	streamID := "custom-table-test-stream-" + time.Now().Format("20060102150405")
+	err := store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	// Check that event was stored in the custom table
+	quotedCustomTableName := fmt.Sprintf(`"%s"`, customTableName)
+	eventCount := countEventsInTable(t, connStr, quotedCustomTableName)
+	if eventCount != 1 {
+		t.Errorf("Expected 1 event in custom table %s, got %d", customTableName, eventCount)
+	}
+
+	// Test that Load also works with the custom table name
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed from custom table: %v", err)
+	}
+
+	if len(loadedEvents) != 1 {
+		t.Fatalf("Expected 1 event loaded from custom table, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Type != "TestEvent" {
+		t.Errorf("Expected event type 'TestEvent', got '%s'", loadedEvents[0].Type)
+	}
+}
+
+func TestPostgresEventStore_Integration_DefaultTableName(t *testing.T) {
+	// Test that the old constructor still works with default table name
+	store := setupTestStore(t)
+	defer store.Close()
+
+	events := []eventstore.Event{
+		{
+			Type: "CompatibilityTest",
+			Data: []byte(`{"test": "backward_compatibility"}`),
+		},
+	}
+
+	streamID := "backward-compatibility-test-" + time.Now().Format("20060102150405")
+	err := store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Append failed with old constructor: %v", err)
+	}
+
+	// Verify events were stored
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed with old constructor: %v", err)
+	}
+
+	if len(loadedEvents) != 1 {
+		t.Fatalf("Expected 1 event, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Type != "CompatibilityTest" {
+		t.Errorf("Expected event type 'CompatibilityTest', got '%s'", loadedEvents[0].Type)
+	}
+}
+
+func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T) {
+	// Test that empty table name uses default "events"
+	config := postgres.Config{
+		ConnectionString: getTestConnectionString(),
+		TableName:        "", // Empty table name should use default
+	}
+	
+	connStr := getTestConnectionString()
+	
+	store := setupTestStoreWithConfig(t, config)
+	defer store.Close()
+
+	// Check that the default "events" table was created (not a custom one)
+	if !checkTableExists(t, connStr, "events") {
+		t.Fatalf("Default 'events' table should exist when using empty table name")
+	}
+
+	// Append a single event to test functionality
+	events := []eventstore.Event{
+		{
+			Type: "EmptyTableNameTest",
+			Data: []byte(`{"test": "empty_table_name"}`),
+		},
+	}
+
+	streamID := "empty-table-name-test-" + time.Now().Format("20060102150405")
+	err := store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Append failed with empty table name: %v", err)
+	}
+
+	// Check that event was stored in the default "events" table
+	eventCount := countEventsInTable(t, connStr, `"events"`)
+	if eventCount == 0 {
+		t.Errorf("Expected at least 1 event in default 'events' table, got %d", eventCount)
+	}
+
+	// Test that Load also works with the default table name
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	if err != nil {
+		t.Fatalf("Load failed from default table: %v", err)
+	}
+
+	if len(loadedEvents) != 1 {
+		t.Fatalf("Expected 1 event loaded from default table, got %d", len(loadedEvents))
+	}
+
+	if loadedEvents[0].Type != "EmptyTableNameTest" {
+		t.Errorf("Expected event type 'EmptyTableNameTest', got '%s'", loadedEvents[0].Type)
+	}
 }

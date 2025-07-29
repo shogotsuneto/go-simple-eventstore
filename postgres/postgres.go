@@ -4,20 +4,30 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-// PostgresEventStore is a PostgreSQL implementation of EventStore.
-type PostgresEventStore struct {
-	db *sql.DB
+// Config contains configuration options for PostgresEventStore.
+type Config struct {
+	// ConnectionString is the PostgreSQL connection string
+	ConnectionString string
+	// TableName is the name of the table to store events. Defaults to "events" if empty.
+	TableName string
 }
 
-// NewPostgresEventStore creates a new PostgreSQL event store.
-func NewPostgresEventStore(connectionString string) (*PostgresEventStore, error) {
-	db, err := sql.Open("postgres", connectionString)
+// PostgresEventStore is a PostgreSQL implementation of EventStore.
+type PostgresEventStore struct {
+	db        *sql.DB
+	tableName string
+}
+
+// NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
+func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
+	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
@@ -26,9 +36,26 @@ func NewPostgresEventStore(connectionString string) (*PostgresEventStore, error)
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	store := &PostgresEventStore{db: db}
+	tableName := config.TableName
+	if tableName == "" {
+		tableName = "events"
+	}
+
+	store := &PostgresEventStore{
+		db:        db,
+		tableName: tableName,
+	}
 
 	return store, nil
+}
+
+// quoteIdentifier properly quotes a PostgreSQL identifier (table name, column name, etc.)
+// to handle special characters and prevent SQL injection.
+func quoteIdentifier(identifier string) string {
+	// Replace any double quotes with double-double quotes to escape them
+	escaped := strings.ReplaceAll(identifier, `"`, `""`)
+	// Wrap in double quotes
+	return `"` + escaped + `"`
 }
 
 // Close closes the database connection.
@@ -38,8 +65,9 @@ func (s *PostgresEventStore) Close() error {
 
 // InitSchema creates the necessary tables and indexes if they don't exist.
 func (s *PostgresEventStore) InitSchema() error {
-	query := `
-	CREATE TABLE IF NOT EXISTS events (
+	tableName := quoteIdentifier(s.tableName)
+	query := fmt.Sprintf(`
+	CREATE TABLE IF NOT EXISTS %s (
 		id SERIAL PRIMARY KEY,
 		stream_id VARCHAR(255) NOT NULL,
 		version BIGINT NOT NULL,
@@ -50,9 +78,11 @@ func (s *PostgresEventStore) InitSchema() error {
 		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_events_stream_id ON events(stream_id);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
-	`
+	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
+	`, tableName,
+		quoteIdentifier("idx_"+s.tableName+"_stream_id"), tableName,
+		quoteIdentifier("idx_"+s.tableName+"_stream_version"), tableName)
 
 	_, err := s.db.Exec(query)
 	return err
@@ -78,7 +108,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 	// Get the current maximum version for this stream
 	var maxVersion int64
-	err = tx.QueryRow("SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1", streamID).Scan(&maxVersion)
+	err = tx.QueryRow(fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE stream_id = $1", quoteIdentifier(s.tableName)), streamID).Scan(&maxVersion)
 	if err != nil {
 		return fmt.Errorf("failed to get max version: %w", err)
 	}
@@ -101,10 +131,10 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	}
 
 	// Prepare the insert statement
-	stmt, err := tx.Prepare(`
-		INSERT INTO events (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
+	stmt, err := tx.Prepare(fmt.Sprintf(`
+		INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`)
+	`, quoteIdentifier(s.tableName)))
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -143,12 +173,12 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 // Load retrieves events for the given stream using the specified options.
 func (s *PostgresEventStore) Load(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT event_id, event_type, event_data, metadata, timestamp, version
-		FROM events
+		FROM %s
 		WHERE stream_id = $1 AND version > $2
 		ORDER BY version ASC
-	`
+	`, quoteIdentifier(s.tableName))
 
 	args := []interface{}{streamID, opts.FromVersion}
 
