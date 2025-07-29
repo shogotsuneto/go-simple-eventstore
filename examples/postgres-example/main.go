@@ -175,7 +175,7 @@ func main() {
 	}
 
 	fmt.Println("\n🎉 PostgreSQL example completed successfully!")
-	
+
 	if *tableName != "" {
 		fmt.Printf("💡 Events were stored in custom table '%s'. You can run this example with different table names using the -table-name flag.\n", *tableName)
 	} else {

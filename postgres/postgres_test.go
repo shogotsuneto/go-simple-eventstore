@@ -54,9 +54,9 @@ func TestQuoteIdentifier(t *testing.T) {
 
 func TestConfig_TableName(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         Config
-		expectedTable  string
+		name          string
+		config        Config
+		expectedTable string
 	}{
 		{
 			name: "default table name when empty",
@@ -92,7 +92,7 @@ func TestConfig_TableName(t *testing.T) {
 			if tableName == "" {
 				tableName = "events"
 			}
-			
+
 			if tableName != tt.expectedTable {
 				t.Errorf("Expected table name %s, got %s", tt.expectedTable, tableName)
 			}
@@ -116,7 +116,7 @@ func TestNewPostgresEventStoreWithConfig_InvalidConnection(t *testing.T) {
 		ConnectionString: "invalid-connection-string",
 		TableName:        "custom_events",
 	}
-	
+
 	_, err := NewPostgresEventStoreWithConfig(config)
 	if err == nil {
 		t.Error("Expected error for invalid connection string")

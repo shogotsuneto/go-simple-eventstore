@@ -88,9 +88,9 @@ func (s *PostgresEventStore) InitSchema() error {
 
 	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
 	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
-	`, tableName, 
-	   quoteIdentifier("idx_"+s.tableName+"_stream_id"), tableName,
-	   quoteIdentifier("idx_"+s.tableName+"_stream_version"), tableName)
+	`, tableName,
+		quoteIdentifier("idx_"+s.tableName+"_stream_id"), tableName,
+		quoteIdentifier("idx_"+s.tableName+"_stream_version"), tableName)
 
 	_, err := s.db.Exec(query)
 	return err

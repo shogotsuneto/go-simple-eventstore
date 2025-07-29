@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -581,7 +580,7 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 
 	// Check that event was stored in the custom table
-	quotedCustomTableName := fmt.Sprintf(`"%s"`, strings.ReplaceAll(customTableName, `"`, `""`))
+	quotedCustomTableName := fmt.Sprintf(`"%s"`, customTableName)
 	eventCount := countEventsInTable(t, connStr, quotedCustomTableName)
 	if eventCount != 1 {
 		t.Errorf("Expected 1 event in custom table %s, got %d", customTableName, eventCount)
