@@ -86,7 +86,7 @@ func countEventsInTable(t *testing.T, connectionString, tableName string) int {
 	defer db.Close()
 	
 	var count int
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", quotePgIdentifier(tableName))
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
 	
 	err = db.QueryRow(query).Scan(&count)
 	if err != nil {
@@ -94,11 +94,6 @@ func countEventsInTable(t *testing.T, connectionString, tableName string) int {
 	}
 	
 	return count
-}
-
-// Helper function to quote PostgreSQL identifiers (same as in postgres.go)
-func quotePgIdentifier(name string) string {
-	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(name, `"`, `""`))
 }
 
 func TestPostgresEventStore_Integration_Append(t *testing.T) {
@@ -586,7 +581,8 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 
 	// Check that event was stored in the custom table
-	eventCount := countEventsInTable(t, connStr, customTableName)
+	quotedCustomTableName := fmt.Sprintf(`"%s"`, strings.ReplaceAll(customTableName, `"`, `""`))
+	eventCount := countEventsInTable(t, connStr, quotedCustomTableName)
 	if eventCount != 1 {
 		t.Errorf("Expected 1 event in custom table %s, got %d", customTableName, eventCount)
 	}
@@ -671,7 +667,7 @@ func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T)
 	}
 
 	// Check that event was stored in the default "events" table
-	eventCount := countEventsInTable(t, connStr, "events")
+	eventCount := countEventsInTable(t, connStr, `"events"`)
 	if eventCount == 0 {
 		t.Errorf("Expected at least 1 event in default 'events' table, got %d", eventCount)
 	}
