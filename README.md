@@ -95,21 +95,40 @@ import (
 )
 
 func main() {
-    // Create a PostgreSQL event store
-    store, err := postgres.NewPostgresEventStore("host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable")
+    // Create a PostgreSQL event store (default table name is "events")
+    store, err := postgres.NewPostgresEventStore(postgres.Config{
+        ConnectionString: "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable",
+        TableName:        "my_custom_events", // Custom table name
+    })
     if err != nil {
         panic(err)
     }
     defer store.Close()
     
-    // Use the same interface as in-memory...
-    // The rest of the code is identical!
+    // Initialize schema with custom table name
+    if err := store.InitSchema(); err != nil {
+        panic(err)
+    }
+    
+    // Use the same interface as before...
 }
 ```
 
-### Running the Example
+### Running the Examples
 
 See the [hello-world example](examples/hello-world/) for a complete demonstration of both backends.
+
+### Running PostgreSQL Examples
+
+Make sure you have PostgreSQL running:
+
+```bash
+# Start PostgreSQL for testing
+make start-postgres
+
+# Run the basic PostgreSQL example
+make run-postgres-example
+```
 
 ## 📋 MVP Scope
 

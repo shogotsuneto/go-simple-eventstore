@@ -25,23 +25,35 @@ type UserEmailChanged struct {
 }
 
 func main() {
-	// Command-line flags for PostgreSQL connection
+	// Command-line flags for PostgreSQL connection and custom table name
 	var pgConnStr = flag.String("postgres-conn", "host=localhost port=5432 user=test password=test dbname=eventstore_test sslmode=disable", "PostgreSQL connection string")
+	var tableName = flag.String("table-name", "", "Custom table name for storing events (uses default 'events' if not specified)")
 	flag.Parse()
 
 	fmt.Println("🚀 Go Simple EventStore - PostgreSQL Example")
 	fmt.Println("============================================")
-	fmt.Printf("Connecting to PostgreSQL...\n")
+
+	var store *postgres.PostgresEventStore
+	var err error
 
 	// Create PostgreSQL event store
-	store, err := postgres.NewPostgresEventStore(*pgConnStr)
+	fmt.Printf("Connecting to PostgreSQL...\n")
+	store, err = postgres.NewPostgresEventStore(postgres.Config{
+		ConnectionString: *pgConnStr,
+		TableName:        *tableName, // Uses default "events" if empty
+	})
+
 	if err != nil {
 		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
 	defer store.Close()
 
 	// Initialize the database schema
-	fmt.Println("🔧 Initializing database schema...")
+	if *tableName != "" {
+		fmt.Printf("🔧 Initializing database schema with table '%s'...\n", *tableName)
+	} else {
+		fmt.Println("🔧 Initializing database schema with default table 'events'...")
+	}
 	if err := store.InitSchema(); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
@@ -158,4 +170,11 @@ func main() {
 	}
 
 	fmt.Println("\n🎉 PostgreSQL example completed successfully!")
+
+	if *tableName != "" {
+		fmt.Printf("💡 Events were stored in custom table '%s'. You can run this example with different table names using the -table-name flag.\n", *tableName)
+	} else {
+		fmt.Println("💡 Events were stored in the default 'events' table. You can use a custom table name with the -table-name flag.")
+		fmt.Println("   Example: go run main.go -table-name=my_custom_events")
+	}
 }
