@@ -89,7 +89,7 @@ func main() {
     
     // Load events from the stream
     loadedEvents, err := store.Load("user-123", eventstore.LoadOptions{
-        FromVersion: 0,
+        AfterVersion: 0,
         Limit: 10,
     })
     if err != nil {
