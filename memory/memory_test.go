@@ -403,10 +403,10 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 	})
 }
 
-// Tests for InMemoryEventConsumer functionality
+// Tests for InMemoryEventStore consumer functionality
 
-func TestInMemoryEventConsumer_Retrieve(t *testing.T) {
-	store := NewInMemoryEventConsumer()
+func TestInMemoryEventStore_Retrieve(t *testing.T) {
+	store := NewInMemoryEventStore()
 
 	// Add some events to the store
 	events := []eventstore.Event{
@@ -450,8 +450,8 @@ func TestInMemoryEventConsumer_Retrieve(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventConsumer_Subscribe(t *testing.T) {
-	store := NewInMemoryEventConsumer()
+func TestInMemoryEventStore_Subscribe(t *testing.T) {
+	store := NewInMemoryEventStore()
 
 	// Subscribe to a stream
 	subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
@@ -502,8 +502,8 @@ func TestInMemoryEventConsumer_Subscribe(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventConsumer_Subscribe_WithFromVersion(t *testing.T) {
-	store := NewInMemoryEventConsumer()
+func TestInMemoryEventStore_Subscribe_WithFromVersion(t *testing.T) {
+	store := NewInMemoryEventStore()
 
 	// Add some initial events
 	initialEvents := []eventstore.Event{
@@ -566,8 +566,8 @@ func TestInMemoryEventConsumer_Subscribe_WithFromVersion(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventConsumer_Subscribe_Close(t *testing.T) {
-	store := NewInMemoryEventConsumer()
+func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
+	store := NewInMemoryEventStore()
 
 	subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
 		FromVersion: 0,

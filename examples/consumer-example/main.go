@@ -28,8 +28,8 @@ func main() {
 	fmt.Println("🚀 Go Simple EventStore - Consumer Example")
 	fmt.Println("==========================================")
 
-	// Create a new in-memory event store with consumer capabilities
-	store := memory.NewInMemoryEventConsumer()
+	// Create a new in-memory event store with both producer and consumer capabilities
+	store := memory.NewInMemoryEventStore()
 
 	// First, let's demonstrate retrieving
 	fmt.Println("\n📊 Demonstrating Retrieving...")
@@ -42,7 +42,7 @@ func main() {
 	fmt.Println("\n🎉 Consumer example completed successfully!")
 }
 
-func demonstrateRetrieving(store *memory.InMemoryEventConsumer) {
+func demonstrateRetrieving(store *memory.InMemoryEventStore) {
 	// Add some initial events
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
@@ -123,7 +123,7 @@ func demonstrateRetrieving(store *memory.InMemoryEventConsumer) {
 	}
 }
 
-func demonstrateSubscriptions(store *memory.InMemoryEventConsumer) {
+func demonstrateSubscriptions(store *memory.InMemoryEventStore) {
 	streamID := "user-789"
 
 	// Create a subscription starting from the beginning

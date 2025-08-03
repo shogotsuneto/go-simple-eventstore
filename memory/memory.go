@@ -8,21 +8,24 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-// InMemoryEventStore is a simple in-memory implementation of EventStore.
+// InMemoryEventStore is a simple in-memory implementation of both EventStore and EventConsumer.
 // This implementation is suitable for testing and demonstration purposes.
 type InMemoryEventStore struct {
-	mu      sync.RWMutex
-	streams map[string][]eventstore.Event
+	mu            sync.RWMutex
+	streams       map[string][]eventstore.Event
+	subscriptions map[string][]*InMemorySubscription
+	subsMu        sync.RWMutex
 }
 
-// NewInMemoryEventStore creates a new in-memory event store.
+// NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
 func NewInMemoryEventStore() *InMemoryEventStore {
 	return &InMemoryEventStore{
-		streams: make(map[string][]eventstore.Event),
+		streams:       make(map[string][]eventstore.Event),
+		subscriptions: make(map[string][]*InMemorySubscription),
 	}
 }
 
-// Append adds new events to the given stream.
+// Append adds new events to the given stream and notifies subscriptions.
 func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
 	if len(events) == 0 {
 		return nil
@@ -66,6 +69,9 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	// Append events to stream
 	s.streams[streamID] = append(stream, events...)
 
+	// Notify subscriptions about new events
+	s.notifySubscriptions(streamID, events)
+
 	return nil
 }
 
@@ -93,36 +99,8 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 	return result, nil
 }
 
-// InMemoryEventConsumer extends InMemoryEventStore with consumer capabilities.
-type InMemoryEventConsumer struct {
-	*InMemoryEventStore
-	subscriptions map[string][]*InMemorySubscription
-	subsMu        sync.RWMutex
-}
-
-// NewInMemoryEventConsumer creates a new in-memory event store with consumer capabilities.
-func NewInMemoryEventConsumer() *InMemoryEventConsumer {
-	return &InMemoryEventConsumer{
-		InMemoryEventStore: NewInMemoryEventStore(),
-		subscriptions:      make(map[string][]*InMemorySubscription),
-	}
-}
-
-// Append adds new events to the given stream and notifies subscriptions.
-func (s *InMemoryEventConsumer) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
-	// Call the base implementation
-	err := s.InMemoryEventStore.Append(streamID, events, expectedVersion)
-	if err != nil {
-		return err
-	}
-
-	// Notify subscriptions about new events
-	s.notifySubscriptions(streamID, events)
-	return nil
-}
-
 // Retrieve retrieves events from a stream in a retrieval operation.
-func (s *InMemoryEventConsumer) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+func (s *InMemoryEventStore) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
 	loadOpts := eventstore.LoadOptions{
 		FromVersion: opts.FromVersion,
 		Limit:       opts.BatchSize,
@@ -131,7 +109,7 @@ func (s *InMemoryEventConsumer) Retrieve(streamID string, opts eventstore.Consum
 }
 
 // Subscribe creates a subscription to a stream for continuous event consumption.
-func (s *InMemoryEventConsumer) Subscribe(streamID string, opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
+func (s *InMemoryEventStore) Subscribe(streamID string, opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
@@ -155,7 +133,7 @@ func (s *InMemoryEventConsumer) Subscribe(streamID string, opts eventstore.Consu
 }
 
 // notifySubscriptions notifies all subscriptions for a stream about new events.
-func (s *InMemoryEventConsumer) notifySubscriptions(streamID string, events []eventstore.Event) {
+func (s *InMemoryEventStore) notifySubscriptions(streamID string, events []eventstore.Event) {
 	s.subsMu.RLock()
 	subs, exists := s.subscriptions[streamID]
 	if !exists {
@@ -183,7 +161,7 @@ func (s *InMemoryEventConsumer) notifySubscriptions(streamID string, events []ev
 }
 
 // removeSubscription removes a subscription from the store.
-func (s *InMemoryEventConsumer) removeSubscription(streamID string, sub *InMemorySubscription) {
+func (s *InMemoryEventStore) removeSubscription(streamID string, sub *InMemorySubscription) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
@@ -210,7 +188,7 @@ type InMemorySubscription struct {
 	eventsCh    chan eventstore.Event
 	errorsCh    chan error
 	closeCh     chan struct{}
-	store       *InMemoryEventConsumer
+	store       *InMemoryEventStore
 	closed      bool
 	mu          sync.Mutex
 }
