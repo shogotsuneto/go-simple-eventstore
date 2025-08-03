@@ -27,33 +27,40 @@ func getTestConnectionString() string {
 	return connStr
 }
 
-func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStore(postgres.Config{
-		ConnectionString: getTestConnectionString(),
-		TableName:        "events", // Explicit default table name
-	})
+func setupTestStore(t *testing.T) (eventstore.EventStore, *sql.DB) {
+	db, err := sql.Open("postgres", getTestConnectionString())
 	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+		t.Fatalf("Failed to open database connection: %v", err)
 	}
-	
-	if err := store.InitSchema(); err != nil {
+
+	if err := db.Ping(); err != nil {
+		t.Fatalf("Failed to ping database: %v", err)
+	}
+
+	if err := postgres.InitSchema(db, "events"); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
-	
-	return store
+
+	store := postgres.NewPostgresEventStore(db, "events")
+	return store, db
 }
 
-func setupTestStoreWithConfig(t *testing.T, config postgres.Config) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStore(config)
+func setupTestStoreWithTableName(t *testing.T, tableName string) (eventstore.EventStore, *sql.DB) {
+	db, err := sql.Open("postgres", getTestConnectionString())
 	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store with config: %v", err)
+		t.Fatalf("Failed to open database connection: %v", err)
 	}
-	
-	if err := store.InitSchema(); err != nil {
+
+	if err := db.Ping(); err != nil {
+		t.Fatalf("Failed to ping database: %v", err)
+	}
+
+	if err := postgres.InitSchema(db, tableName); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
-	
-	return store
+
+	store := postgres.NewPostgresEventStore(db, tableName)
+	return store, db
 }
 
 // Helper function to check if a table exists in the database
@@ -99,7 +106,9 @@ func countEventsInTable(t *testing.T, connectionString, tableName string) int {
 }
 
 func TestPostgresEventStore_Integration_Append(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
+	defer db.Close()
 	defer store.Close()
 
 	events := []eventstore.Event{
@@ -169,7 +178,9 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
+	defer db.Close()
 	defer store.Close()
 
 	streamID := "non-existent-stream-" + time.Now().Format("20060102150405")
@@ -184,7 +195,8 @@ func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	// Add some events
@@ -219,7 +231,8 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	// Add some events
@@ -256,7 +269,8 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 
 
 func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	streamID := "concurrent-test-stream-" + time.Now().Format("20060102150405")
@@ -307,7 +321,8 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	streamID := "expected-version-new-stream-" + time.Now().Format("20060102150405")
@@ -344,7 +359,8 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	streamID := "expected-version-exact-match-" + time.Now().Format("20060102150405")
@@ -401,7 +417,8 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	streamID := "expected-version-no-check-" + time.Now().Format("20060102150405")
@@ -441,7 +458,8 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) {
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	streamID := "conflict-test-stream-" + time.Now().Format("20060102150405")
@@ -546,18 +564,14 @@ func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) 
 func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	customTableName := "custom_events_" + time.Now().Format("20060102150405")
 	
-	config := postgres.Config{
-		ConnectionString: getTestConnectionString(),
-		TableName:        customTableName,
-	}
-	
 	// First check that the custom table doesn't exist
 	connStr := getTestConnectionString()
 	if checkTableExists(t, connStr, customTableName) {
 		t.Fatalf("Custom table %s should not exist before initialization", customTableName)
 	}
 	
-	store := setupTestStoreWithConfig(t, config)
+	store, db := setupTestStoreWithTableName(t, customTableName)
+	defer db.Close()
 	defer store.Close()
 
 	// Check that the custom table was created
@@ -606,7 +620,8 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 
 func TestPostgresEventStore_Integration_DefaultTableName(t *testing.T) {
 	// Test that the old constructor still works with default table name
-	store := setupTestStore(t)
+	store, db := setupTestStore(t)
+	defer db.Close()
 	defer store.Close()
 
 	events := []eventstore.Event{
@@ -639,14 +654,10 @@ func TestPostgresEventStore_Integration_DefaultTableName(t *testing.T) {
 
 func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T) {
 	// Test that empty table name uses default "events"
-	config := postgres.Config{
-		ConnectionString: getTestConnectionString(),
-		TableName:        "", // Empty table name should use default
-	}
-	
 	connStr := getTestConnectionString()
 	
-	store := setupTestStoreWithConfig(t, config)
+	store, db := setupTestStoreWithTableName(t, "")
+	defer db.Close()
 	defer store.Close()
 
 	// Check that the default "events" table was created (not a custom one)

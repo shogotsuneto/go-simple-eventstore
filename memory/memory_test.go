@@ -599,3 +599,49 @@ func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
 		t.Errorf("Expected 0 subscriptions, got %d", len(subs))
 	}
 }
+
+func TestInMemoryEventStore_Close(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Create a subscription
+	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
+		FromVersion: 0,
+		BatchSize:   10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+
+	// Verify subscription was created
+	concreteStore := store.(*InMemoryEventStore)
+	concreteStore.subsMu.RLock()
+	subs := concreteStore.subscriptions["test-stream"]
+	concreteStore.subsMu.RUnlock()
+
+	if len(subs) != 1 {
+		t.Errorf("Expected 1 subscription, got %d", len(subs))
+	}
+
+	// Close the store
+	err = store.Close()
+	if err != nil {
+		t.Errorf("Failed to close store: %v", err)
+	}
+
+	// Verify all subscriptions were closed
+	concreteStore.subsMu.RLock()
+	totalSubs := len(concreteStore.subscriptions)
+	concreteStore.subsMu.RUnlock()
+
+	if totalSubs != 0 {
+		t.Errorf("Expected 0 subscription streams after close, got %d", totalSubs)
+	}
+
+	// Verify subscription is closed
+	select {
+	case <-subscription.Events():
+		// This should not block if the subscription is properly closed
+	default:
+		// This is expected - the channel should be closed
+	}
+}

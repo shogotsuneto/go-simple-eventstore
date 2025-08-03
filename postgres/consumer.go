@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 
@@ -15,17 +16,35 @@ type PostgresEventConsumer struct {
 	subsMu        sync.RWMutex
 }
 
-// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration.
-func NewPostgresEventConsumer(config Config) (eventstore.EventConsumer, error) {
-	client, err := newPgClient(config)
-	if err != nil {
-		return nil, err
+// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection and table name.
+func NewPostgresEventConsumer(db *sql.DB, tableName string) eventstore.EventConsumer {
+	if tableName == "" {
+		tableName = "events"
 	}
 
 	return &PostgresEventConsumer{
-		pgClient:      client,
+		pgClient:      &pgClient{
+			db:        db,
+			tableName: tableName,
+		},
 		subscriptions: make(map[string][]*PostgresSubscription),
-	}, nil
+	}
+}
+
+// Close closes the database connection and releases resources.
+func (s *PostgresEventConsumer) Close() error {
+	s.subsMu.Lock()
+	defer s.subsMu.Unlock()
+
+	// Close all active subscriptions
+	for streamID, subs := range s.subscriptions {
+		for _, sub := range subs {
+			sub.Close()
+		}
+		delete(s.subscriptions, streamID)
+	}
+
+	return s.db.Close()
 }
 
 // Retrieve retrieves events from a stream in a retrieval operation.

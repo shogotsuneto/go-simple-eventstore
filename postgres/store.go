@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -13,46 +14,23 @@ type PostgresEventStore struct {
 	*pgClient
 }
 
-// NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
-func NewPostgresEventStore(config Config) (eventstore.EventStore, error) {
-	client, err := newPgClient(config)
-	if err != nil {
-		return nil, err
+// NewPostgresEventStore creates a new PostgreSQL event store with the given database connection and table name.
+func NewPostgresEventStore(db *sql.DB, tableName string) eventstore.EventStore {
+	if tableName == "" {
+		tableName = "events"
 	}
 
 	return &PostgresEventStore{
-		pgClient: client,
-	}, nil
+		pgClient: &pgClient{
+			db:        db,
+			tableName: tableName,
+		},
+	}
 }
 
 // Close closes the database connection.
 func (s *PostgresEventStore) Close() error {
 	return s.db.Close()
-}
-
-// InitSchema creates the necessary tables and indexes if they don't exist.
-func (s *PostgresEventStore) InitSchema() error {
-	tableName := quoteIdentifier(s.tableName)
-	query := fmt.Sprintf(`
-	CREATE TABLE IF NOT EXISTS %s (
-		id SERIAL PRIMARY KEY,
-		stream_id VARCHAR(255) NOT NULL,
-		version BIGINT NOT NULL,
-		event_id VARCHAR(255) NOT NULL,
-		event_type VARCHAR(255) NOT NULL,
-		event_data BYTEA NOT NULL,
-		metadata JSONB,
-		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
-	);
-
-	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
-	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
-	`, tableName,
-		quoteIdentifier("idx_"+s.tableName+"_stream_id"), tableName,
-		quoteIdentifier("idx_"+s.tableName+"_stream_version"), tableName)
-
-	_, err := s.db.Exec(query)
-	return err
 }
 
 // Append adds new events to the given stream.

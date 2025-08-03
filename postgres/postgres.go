@@ -10,6 +10,36 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
+// InitSchema creates the necessary tables and indexes if they don't exist.
+// It takes a database connection and table name to initialize the schema.
+func InitSchema(db *sql.DB, tableName string) error {
+	if tableName == "" {
+		tableName = "events"
+	}
+
+	quotedTableName := quoteIdentifier(tableName)
+	query := fmt.Sprintf(`
+	CREATE TABLE IF NOT EXISTS %s (
+		id SERIAL PRIMARY KEY,
+		stream_id VARCHAR(255) NOT NULL,
+		version BIGINT NOT NULL,
+		event_id VARCHAR(255) NOT NULL,
+		event_type VARCHAR(255) NOT NULL,
+		event_data BYTEA NOT NULL,
+		metadata JSONB,
+		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
+	`, quotedTableName,
+		quoteIdentifier("idx_"+tableName+"_stream_id"), quotedTableName,
+		quoteIdentifier("idx_"+tableName+"_stream_version"), quotedTableName)
+
+	_, err := db.Exec(query)
+	return err
+}
+
 // Config contains configuration options for PostgresEventStore.
 type Config struct {
 	// ConnectionString is the PostgreSQL connection string

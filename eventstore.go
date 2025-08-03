@@ -42,6 +42,9 @@ type EventStore interface {
 
 	// Load retrieves events for the given stream using the specified options.
 	Load(streamID string, opts LoadOptions) ([]Event, error)
+
+	// Close closes the event store connection and releases resources.
+	Close() error
 }
 
 // Common error types for event store operations.

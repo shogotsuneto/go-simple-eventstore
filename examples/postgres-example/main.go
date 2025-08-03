@@ -1,11 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 
+	_ "github.com/lib/pq" // PostgreSQL driver
 	eventstore "github.com/shogotsuneto/go-simple-eventstore"
 	"github.com/shogotsuneto/go-simple-eventstore/postgres"
 )
@@ -34,22 +36,21 @@ func main() {
 	fmt.Println("============================================")
 
 	var store eventstore.EventStore
+	var db *sql.DB
 	var err error
 
-	// Create PostgreSQL event store
+	// Create PostgreSQL connection
 	fmt.Printf("Connecting to PostgreSQL...\n")
-	store, err = postgres.NewPostgresEventStore(postgres.Config{
-		ConnectionString: *pgConnStr,
-		TableName:        *tableName, // Uses default "events" if empty
-	})
-
+	db, err = sql.Open("postgres", *pgConnStr)
 	if err != nil {
-		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
+		log.Fatalf("Failed to open PostgreSQL connection: %v", err)
 	}
-	
-	// Get concrete implementation for Close and InitSchema methods
-	pgStore := store.(*postgres.PostgresEventStore)
-	defer pgStore.Close()
+	defer db.Close()
+
+	// Test the connection
+	if err = db.Ping(); err != nil {
+		log.Fatalf("Failed to ping PostgreSQL: %v", err)
+	}
 
 	// Initialize the database schema
 	if *tableName != "" {
@@ -57,9 +58,14 @@ func main() {
 	} else {
 		fmt.Println("🔧 Initializing database schema with default table 'events'...")
 	}
-	if err := pgStore.InitSchema(); err != nil {
+	if err := postgres.InitSchema(db, *tableName); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
+
+	// Create PostgreSQL event store
+	store = postgres.NewPostgresEventStore(db, *tableName)
+	defer store.Close()
+
 	fmt.Println("✅ PostgreSQL event store ready")
 
 	// Create some domain events

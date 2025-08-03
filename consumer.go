@@ -30,5 +30,7 @@ type EventConsumer interface {
 	Retrieve(streamID string, opts ConsumeOptions) ([]Event, error)
 	// Subscribe creates a subscription to a stream for continuous event consumption
 	Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
+	// Close closes the event consumer connection and releases resources.
+	Close() error
 }
 
