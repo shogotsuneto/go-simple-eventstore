@@ -28,11 +28,6 @@ func NewPostgresEventStore(db *sql.DB, tableName string) eventstore.EventStore {
 	}
 }
 
-// Close closes the database connection.
-func (s *PostgresEventStore) Close() error {
-	return s.db.Close()
-}
-
 // Append adds new events to the given stream.
 func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
 	if len(events) == 0 {

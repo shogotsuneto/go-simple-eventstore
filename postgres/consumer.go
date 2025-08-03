@@ -31,22 +31,6 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string) eventstore.EventCons
 	}
 }
 
-// Close closes the database connection and releases resources.
-func (s *PostgresEventConsumer) Close() error {
-	s.subsMu.Lock()
-	defer s.subsMu.Unlock()
-
-	// Close all active subscriptions
-	for streamID, subs := range s.subscriptions {
-		for _, sub := range subs {
-			sub.Close()
-		}
-		delete(s.subscriptions, streamID)
-	}
-
-	return s.db.Close()
-}
-
 // Retrieve retrieves events from a stream in a retrieval operation.
 func (s *PostgresEventConsumer) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
 	loadOpts := eventstore.LoadOptions{

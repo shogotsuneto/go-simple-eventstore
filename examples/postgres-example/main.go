@@ -64,7 +64,6 @@ func main() {
 
 	// Create PostgreSQL event store
 	store = postgres.NewPostgresEventStore(db, *tableName)
-	defer store.Close()
 
 	fmt.Println("✅ PostgreSQL event store ready")
 

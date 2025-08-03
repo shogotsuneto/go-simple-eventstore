@@ -622,11 +622,8 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 		t.Errorf("Expected 1 subscription, got %d", len(subs))
 	}
 
-	// Close the store
-	err = store.Close()
-	if err != nil {
-		t.Errorf("Failed to close store: %v", err)
-	}
+	// Close the subscription directly
+	subscription.Close()
 
 	// Verify all subscriptions were closed
 	concreteStore.subsMu.RLock()

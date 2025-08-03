@@ -32,33 +32,6 @@ func NewInMemoryEventStore() EventStoreConsumer {
 	}
 }
 
-// Close closes the in-memory event store and releases resources.
-// For the in-memory implementation, this closes all active subscriptions.
-func (s *InMemoryEventStore) Close() error {
-	s.subsMu.Lock()
-	
-	// Collect all subscriptions to close
-	var subsToClose []*InMemorySubscription
-	for streamID, subs := range s.subscriptions {
-		subsToClose = append(subsToClose, subs...)
-		delete(s.subscriptions, streamID)
-	}
-	
-	s.subsMu.Unlock()
-
-	// Close all subscriptions outside the lock to avoid deadlock
-	for _, sub := range subsToClose {
-		sub.mu.Lock()
-		if !sub.closed {
-			sub.closed = true
-			close(sub.closeCh)
-		}
-		sub.mu.Unlock()
-	}
-
-	return nil
-}
-
 // Append adds new events to the given stream and notifies subscriptions.
 func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
 	if len(events) == 0 {
