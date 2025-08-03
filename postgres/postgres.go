@@ -32,9 +32,11 @@ func InitSchema(db *sql.DB, tableName string) error {
 
 	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
 	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
+	CREATE INDEX IF NOT EXISTS %s ON %s(timestamp);
 	`, quotedTableName,
 		quoteIdentifier("idx_"+tableName+"_stream_id"), quotedTableName,
-		quoteIdentifier("idx_"+tableName+"_stream_version"), quotedTableName)
+		quoteIdentifier("idx_"+tableName+"_stream_version"), quotedTableName,
+		quoteIdentifier("idx_"+tableName+"_timestamp"), quotedTableName)
 
 	_, err := db.Exec(query)
 	return err
