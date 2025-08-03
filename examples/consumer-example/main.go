@@ -42,7 +42,7 @@ func main() {
 	fmt.Println("\n🎉 Consumer example completed successfully!")
 }
 
-func demonstrateRetrieving(store *memory.InMemoryEventStore) {
+func demonstrateRetrieving(store eventstore.EventStoreConsumer) {
 	// Add some initial events
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
@@ -123,7 +123,7 @@ func demonstrateRetrieving(store *memory.InMemoryEventStore) {
 	}
 }
 
-func demonstrateSubscriptions(store *memory.InMemoryEventStore) {
+func demonstrateSubscriptions(store eventstore.EventStoreConsumer) {
 	streamID := "user-789"
 
 	// Create a subscription starting from the beginning

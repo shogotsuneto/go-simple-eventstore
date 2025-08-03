@@ -33,7 +33,7 @@ func main() {
 	fmt.Println("🚀 Go Simple EventStore - PostgreSQL Example")
 	fmt.Println("============================================")
 
-	var store *postgres.PostgresEventStore
+	var store eventstore.EventStore
 	var err error
 
 	// Create PostgreSQL event store
@@ -46,7 +46,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
-	defer store.Close()
+	
+	// Get concrete implementation for Close and InitSchema methods
+	pgStore := store.(*postgres.PostgresEventStore)
+	defer pgStore.Close()
 
 	// Initialize the database schema
 	if *tableName != "" {
@@ -54,7 +57,7 @@ func main() {
 	} else {
 		fmt.Println("🔧 Initializing database schema with default table 'events'...")
 	}
-	if err := store.InitSchema(); err != nil {
+	if err := pgStore.InitSchema(); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 	fmt.Println("✅ PostgreSQL event store ready")

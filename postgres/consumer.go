@@ -16,7 +16,7 @@ type PostgresEventConsumer struct {
 }
 
 // NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration.
-func NewPostgresEventConsumer(config Config) (*PostgresEventConsumer, error) {
+func NewPostgresEventConsumer(config Config) (eventstore.EventConsumer, error) {
 	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err

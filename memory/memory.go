@@ -18,7 +18,7 @@ type InMemoryEventStore struct {
 }
 
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
-func NewInMemoryEventStore() *InMemoryEventStore {
+func NewInMemoryEventStore() eventstore.EventStoreConsumer {
 	return &InMemoryEventStore{
 		streams:       make(map[string][]eventstore.Event),
 		subscriptions: make(map[string][]*InMemorySubscription),

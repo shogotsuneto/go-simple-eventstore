@@ -14,7 +14,7 @@ type PostgresEventStore struct {
 }
 
 // NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
-func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
+func NewPostgresEventStore(config Config) (eventstore.EventStore, error) {
 	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err

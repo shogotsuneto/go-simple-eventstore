@@ -589,10 +589,11 @@ func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
 		t.Errorf("Second close should not error: %v", err)
 	}
 
-	// Verify subscription is removed from store
-	store.subsMu.RLock()
-	subs := store.subscriptions["user-123"]
-	store.subsMu.RUnlock()
+	// Verify subscription is removed from store (access internal fields for testing)
+	concreteStore := store.(*InMemoryEventStore)
+	concreteStore.subsMu.RLock()
+	subs := concreteStore.subscriptions["user-123"]
+	concreteStore.subsMu.RUnlock()
 
 	if len(subs) != 0 {
 		t.Errorf("Expected 0 subscriptions, got %d", len(subs))
