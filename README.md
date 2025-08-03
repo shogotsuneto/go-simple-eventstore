@@ -30,10 +30,10 @@ type EventStore interface {
 }
 
 type EventConsumer interface {
-    // Retrieve retrieves events from a stream in a retrieval operation
-    Retrieve(streamID string, opts ConsumeOptions) ([]Event, error)
-    // Subscribe creates a subscription to a stream for continuous event consumption
-    Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
+    // Retrieve retrieves events from all streams in a table
+    Retrieve(opts ConsumeOptions) ([]Event, error)
+    // Subscribe creates a subscription to all streams in a table
+    Subscribe(opts ConsumeOptions) (EventSubscription, error)
 }
 
 type EventSubscription interface {
@@ -100,14 +100,13 @@ func main() {
 }
 ```
 
-### Consuming Events with Retrieving
+### Consuming Events with Retrieve
 
 ```go
-// Retrieve events in batches (one-time operation)
-events, err := store.Retrieve("user-123", eventstore.ConsumeOptions{
-    FromVersion: 0,
-    BatchSize: 100,
-    // PollingInterval is ignored for retrieving - only relevant for subscriptions
+// Retrieve events from all streams in the table
+events, err := store.Retrieve(eventstore.ConsumeOptions{
+    FromTimestamp: time.Now().Add(-24 * time.Hour), // Last 24 hours
+    BatchSize:     100,
 })
 if err != nil {
     panic(err)
@@ -121,11 +120,10 @@ for _, event := range events {
 ### Consuming Events with Subscriptions
 
 ```go
-// Subscribe to events for real-time processing
-subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
-    FromVersion: 0,
-    BatchSize: 10,
-    PollingInterval: 2 * time.Second, // Check for new events every 2 seconds (PostgreSQL only)
+// Subscribe to events from all streams in the table
+subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+    FromTimestamp: time.Now(), // From now onwards
+    BatchSize:     10,
 })
 if err != nil {
     panic(err)
@@ -153,25 +151,30 @@ go func() {
 package main
 
 import (
+    "database/sql"
+    "time"
+    _ "github.com/lib/pq"
+    
     "github.com/shogotsuneto/go-simple-eventstore"
     "github.com/shogotsuneto/go-simple-eventstore/postgres"
 )
 
 func main() {
-    // Create a PostgreSQL event store (default table name is "events")
-    store, err := postgres.NewPostgresEventStore(postgres.Config{
-        ConnectionString: "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable",
-        TableName:        "my_custom_events", // Custom table name
-    })
+    // Open database connection
+    db, err := sql.Open("postgres", "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable")
     if err != nil {
         panic(err)
     }
-    defer store.Close()
+    defer db.Close()
     
-    // Initialize schema with custom table name
-    if err := store.InitSchema(); err != nil {
+    // Initialize schema
+    if err := postgres.InitSchema(db, "events"); err != nil {
         panic(err)
     }
+    
+    // Create producer and consumer
+    store := postgres.NewPostgresEventStore(db, "events")
+    consumer := postgres.NewPostgresEventConsumer(db, "events", 2*time.Second)
     
     // Use the same interface as before...
 }
