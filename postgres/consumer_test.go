@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"testing"
+	"time"
 
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
@@ -48,6 +49,92 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 
 	if subscription == nil {
 		t.Error("Expected non-nil subscription")
+	}
+
+	// Clean up
+	if subscription != nil {
+		subscription.Close()
+	}
+}
+
+func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.T) {
+	// Test that polling interval can be configured
+	store := &PostgresEventConsumer{
+		store: &PostgresEventStore{
+			db:        nil, // This will cause an error when actually used
+			tableName: "events",
+		},
+		subscriptions: make(map[string][]*PostgresSubscription),
+	}
+
+	// Test with custom polling interval
+	customInterval := 5 * time.Second
+	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
+		FromVersion:     0,
+		BatchSize:       10,
+		PollingInterval: customInterval,
+	})
+
+	// Subscribe should succeed initially (it starts asynchronously)
+	if err != nil {
+		t.Errorf("Subscribe should not error immediately: %v", err)
+	}
+
+	if subscription == nil {
+		t.Error("Expected non-nil subscription")
+	}
+
+	// Verify the subscription has the correct polling interval
+	pgSub, ok := subscription.(*PostgresSubscription)
+	if !ok {
+		t.Error("Expected PostgresSubscription type")
+	} else {
+		if pgSub.pollingInterval != customInterval {
+			t.Errorf("Expected polling interval %v, got %v", customInterval, pgSub.pollingInterval)
+		}
+	}
+
+	// Clean up
+	if subscription != nil {
+		subscription.Close()
+	}
+}
+
+func TestPostgresEventConsumer_Subscribe_DefaultPollingInterval(t *testing.T) {
+	// Test that default polling interval is used when not specified
+	store := &PostgresEventConsumer{
+		store: &PostgresEventStore{
+			db:        nil, // This will cause an error when actually used
+			tableName: "events",
+		},
+		subscriptions: make(map[string][]*PostgresSubscription),
+	}
+
+	// Test without specifying polling interval (should use default)
+	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
+		FromVersion: 0,
+		BatchSize:   10,
+		// PollingInterval not specified, should default to 1 second
+	})
+
+	// Subscribe should succeed initially (it starts asynchronously)
+	if err != nil {
+		t.Errorf("Subscribe should not error immediately: %v", err)
+	}
+
+	if subscription == nil {
+		t.Error("Expected non-nil subscription")
+	}
+
+	// Verify the subscription has the default polling interval
+	pgSub, ok := subscription.(*PostgresSubscription)
+	if !ok {
+		t.Error("Expected PostgresSubscription type")
+	} else {
+		expectedDefault := 1 * time.Second
+		if pgSub.pollingInterval != expectedDefault {
+			t.Errorf("Expected default polling interval %v, got %v", expectedDefault, pgSub.pollingInterval)
+		}
 	}
 
 	// Clean up

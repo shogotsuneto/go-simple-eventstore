@@ -103,10 +103,11 @@ func main() {
 ### Consuming Events with Retrieving
 
 ```go
-// Retrieve events in batches
+// Retrieve events in batches (one-time operation)
 events, err := store.Retrieve("user-123", eventstore.ConsumeOptions{
     FromVersion: 0,
     BatchSize: 100,
+    // PollingInterval is ignored for retrieving - only relevant for subscriptions
 })
 if err != nil {
     panic(err)
@@ -124,6 +125,7 @@ for _, event := range events {
 subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
     FromVersion: 0,
     BatchSize: 10,
+    PollingInterval: 2 * time.Second, // Check for new events every 2 seconds (PostgreSQL only)
 })
 if err != nil {
     panic(err)

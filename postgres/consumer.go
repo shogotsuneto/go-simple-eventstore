@@ -42,15 +42,22 @@ func (s *PostgresEventConsumer) Subscribe(streamID string, opts eventstore.Consu
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
+	// Set default polling interval if not specified
+	pollingInterval := opts.PollingInterval
+	if pollingInterval <= 0 {
+		pollingInterval = 1 * time.Second
+	}
+
 	sub := &PostgresSubscription{
-		streamID:    streamID,
-		fromVersion: opts.FromVersion,
-		batchSize:   opts.BatchSize,
-		eventsCh:    make(chan eventstore.Event, 100), // Buffered channel
-		errorsCh:    make(chan error, 10),
-		closeCh:     make(chan struct{}),
-		store:       s,
-		ctx:         context.Background(),
+		streamID:        streamID,
+		fromVersion:     opts.FromVersion,
+		batchSize:       opts.BatchSize,
+		pollingInterval: pollingInterval,
+		eventsCh:        make(chan eventstore.Event, 100), // Buffered channel
+		errorsCh:        make(chan error, 10),
+		closeCh:         make(chan struct{}),
+		store:           s,
+		ctx:             context.Background(),
 	}
 
 	// Add subscription to the list
@@ -84,17 +91,18 @@ func (s *PostgresEventConsumer) removeSubscription(streamID string, sub *Postgre
 
 // PostgresSubscription represents an active subscription to a stream in PostgreSQL.
 type PostgresSubscription struct {
-	streamID    string
-	fromVersion int64
-	batchSize   int
-	eventsCh    chan eventstore.Event
-	errorsCh    chan error
-	closeCh     chan struct{}
-	store       *PostgresEventConsumer
-	ctx         context.Context
-	cancel      context.CancelFunc
-	closed      bool
-	mu          sync.Mutex
+	streamID        string
+	fromVersion     int64
+	batchSize       int
+	pollingInterval time.Duration
+	eventsCh        chan eventstore.Event
+	errorsCh        chan error
+	closeCh         chan struct{}
+	store           *PostgresEventConsumer
+	ctx             context.Context
+	cancel          context.CancelFunc
+	closed          bool
+	mu              sync.Mutex
 }
 
 // Events returns a channel that receives events as they are appended to the stream.
@@ -134,7 +142,7 @@ func (s *PostgresSubscription) start() {
 	s.loadInitialEvents()
 
 	// Start polling for new events
-	ticker := time.NewTicker(1 * time.Second) // Check every second
+	ticker := time.NewTicker(s.pollingInterval)
 	defer ticker.Stop()
 
 	for {
