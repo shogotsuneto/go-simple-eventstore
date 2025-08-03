@@ -19,14 +19,14 @@ type Config struct {
 	TableName string
 }
 
-// PostgresEventStore is a PostgreSQL implementation of EventStore.
-type PostgresEventStore struct {
+// postgresStore contains shared database functionality used by both producer and consumer.
+type postgresStore struct {
 	db        *sql.DB
 	tableName string
 }
 
-// NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
-func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
+// newPostgresStore creates a new shared postgres store with the given configuration.
+func newPostgresStore(config Config) (*postgresStore, error) {
 	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
@@ -41,12 +41,27 @@ func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
 		tableName = "events"
 	}
 
-	store := &PostgresEventStore{
+	return &postgresStore{
 		db:        db,
 		tableName: tableName,
+	}, nil
+}
+
+// PostgresEventStore is a PostgreSQL implementation of EventStore.
+type PostgresEventStore struct {
+	*postgresStore
+}
+
+// NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
+func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
+	store, err := newPostgresStore(config)
+	if err != nil {
+		return nil, err
 	}
 
-	return store, nil
+	return &PostgresEventStore{
+		postgresStore: store,
+	}, nil
 }
 
 // quoteIdentifier properly quotes a PostgreSQL identifier (table name, column name, etc.)
@@ -173,12 +188,18 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 // Load retrieves events for the given stream using the specified options.
 func (s *PostgresEventStore) Load(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
+	return s.loadEvents(streamID, opts)
+}
+
+// loadEvents retrieves events for the given stream using the specified options.
+// This is shared functionality used by both producer and consumer.
+func (p *postgresStore) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
 	query := fmt.Sprintf(`
 		SELECT event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s
 		WHERE stream_id = $1 AND version > $2
 		ORDER BY version ASC
-	`, quoteIdentifier(s.tableName))
+	`, quoteIdentifier(p.tableName))
 
 	args := []interface{}{streamID, opts.FromVersion}
 
@@ -187,7 +208,7 @@ func (s *PostgresEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 		args = append(args, opts.Limit)
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := p.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events: %w", err)
 	}

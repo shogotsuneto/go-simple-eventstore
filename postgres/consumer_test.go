@@ -11,7 +11,7 @@ func TestPostgresEventConsumer_Retrieve_InvalidConnection(t *testing.T) {
 	// Test that Retrieve method exists and can be called
 	// This is a minimal test since we don't have a real DB connection in unit tests
 	store := &PostgresEventConsumer{
-		store: &PostgresEventStore{
+		postgresStore: &postgresStore{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
@@ -20,7 +20,7 @@ func TestPostgresEventConsumer_Retrieve_InvalidConnection(t *testing.T) {
 
 	// We expect this to panic/error since db is nil, so we just test the method exists
 	// In real usage, this would be tested with integration tests
-	if store.store.db == nil && store.store.tableName == "events" {
+	if store.db == nil && store.tableName == "events" {
 		// Test passes - method signature is correct
 		t.Log("Retrieve method signature is correct")
 	}
@@ -30,7 +30,7 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 	// Test that Subscribe method exists and can be called
 	// This is a minimal test since we don't have a real DB connection in unit tests
 	store := &PostgresEventConsumer{
-		store: &PostgresEventStore{
+		postgresStore: &postgresStore{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
@@ -60,7 +60,7 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.T) {
 	// Test that polling interval can be configured
 	store := &PostgresEventConsumer{
-		store: &PostgresEventStore{
+		postgresStore: &postgresStore{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
@@ -103,7 +103,7 @@ func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.
 func TestPostgresEventConsumer_Subscribe_DefaultPollingInterval(t *testing.T) {
 	// Test that default polling interval is used when not specified
 	store := &PostgresEventConsumer{
-		store: &PostgresEventStore{
+		postgresStore: &postgresStore{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},

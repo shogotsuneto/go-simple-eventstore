@@ -8,22 +8,22 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-// PostgresEventConsumer extends PostgresEventStore with consumer capabilities.
+// PostgresEventConsumer provides consumer capabilities using PostgreSQL.
 type PostgresEventConsumer struct {
-	store         *PostgresEventStore
+	*postgresStore
 	subscriptions map[string][]*PostgresSubscription
 	subsMu        sync.RWMutex
 }
 
-// NewPostgresEventConsumer creates a new PostgreSQL event store with consumer capabilities.
+// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration.
 func NewPostgresEventConsumer(config Config) (*PostgresEventConsumer, error) {
-	store, err := NewPostgresEventStore(config)
+	store, err := newPostgresStore(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PostgresEventConsumer{
-		store:         store,
+		postgresStore: store,
 		subscriptions: make(map[string][]*PostgresSubscription),
 	}, nil
 }
@@ -34,7 +34,7 @@ func (s *PostgresEventConsumer) Retrieve(streamID string, opts eventstore.Consum
 		FromVersion: opts.FromVersion,
 		Limit:       opts.BatchSize,
 	}
-	return s.store.Load(streamID, loadOpts)
+	return s.loadEvents(streamID, loadOpts)
 }
 
 // Subscribe creates a subscription to a stream for continuous event consumption.
@@ -160,7 +160,7 @@ func (s *PostgresSubscription) start() {
 // loadInitialEvents loads any existing events that match our criteria.
 func (s *PostgresSubscription) loadInitialEvents() {
 	// Safety check - don't try to load if store or db is nil
-	if s.store == nil || s.store.store == nil || s.store.store.db == nil {
+	if s.store == nil || s.store.postgresStore == nil || s.store.db == nil {
 		return
 	}
 
@@ -169,7 +169,7 @@ func (s *PostgresSubscription) loadInitialEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	events, err := s.store.store.Load(s.streamID, eventstore.LoadOptions{
+	events, err := s.store.loadEvents(s.streamID, eventstore.LoadOptions{
 		FromVersion: s.fromVersion,
 		Limit:       batchSize,
 	})
@@ -195,7 +195,7 @@ func (s *PostgresSubscription) loadInitialEvents() {
 // pollForEvents polls the database for new events.
 func (s *PostgresSubscription) pollForEvents() {
 	// Safety check - don't try to poll if store or db is nil
-	if s.store == nil || s.store.store == nil || s.store.store.db == nil {
+	if s.store == nil || s.store.postgresStore == nil || s.store.db == nil {
 		return
 	}
 
@@ -204,7 +204,7 @@ func (s *PostgresSubscription) pollForEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	events, err := s.store.store.Load(s.streamID, eventstore.LoadOptions{
+	events, err := s.store.loadEvents(s.streamID, eventstore.LoadOptions{
 		FromVersion: s.fromVersion,
 		Limit:       batchSize,
 	})
