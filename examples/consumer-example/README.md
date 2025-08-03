@@ -4,7 +4,7 @@ This example demonstrates how to consume events from the event store using both 
 
 ## What this example shows
 
-1. **Polling** - One-time retrieval of events from a stream
+1. **Polling** - Retrieval of events from a stream
    - Poll for all events from the beginning
    - Poll for new events from a specific version
    - Useful for batch processing scenarios
@@ -40,7 +40,7 @@ go run main.go
 ### EventConsumer interface
 ```go
 type EventConsumer interface {
-    // Poll retrieves events from a stream in a one-time polling operation
+    // Poll retrieves events from a stream in a retrieval operation
     Poll(streamID string, opts ConsumeOptions) ([]Event, error)
     // Subscribe creates a subscription to a stream for continuous event consumption
     Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)

@@ -21,7 +21,7 @@ type EventSubscription interface {
 
 // EventConsumer defines the interface for consuming events from streams.
 type EventConsumer interface {
-	// Poll retrieves events from a stream in a one-time polling operation
+	// Poll retrieves events from a stream in a retrieval operation
 	Poll(streamID string, opts ConsumeOptions) ([]Event, error)
 	// Subscribe creates a subscription to a stream for continuous event consumption
 	Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
