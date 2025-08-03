@@ -335,7 +335,7 @@ func (s *PostgresSubscription) Close() error {
 // start begins the subscription lifecycle with polling.
 func (s *PostgresSubscription) start() {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-	
+
 	// Load existing events first
 	s.loadInitialEvents()
 
