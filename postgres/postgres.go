@@ -18,14 +18,14 @@ type Config struct {
 	TableName string
 }
 
-// postgresStore contains shared database functionality used by both producer and consumer.
-type postgresStore struct {
+// pgClient contains shared database functionality used by both producer and consumer.
+type pgClient struct {
 	db        *sql.DB
 	tableName string
 }
 
-// newPostgresStore creates a new shared postgres store with the given configuration.
-func newPostgresStore(config Config) (*postgresStore, error) {
+// newPgClient creates a new shared postgres client with the given configuration.
+func newPgClient(config Config) (*pgClient, error) {
 	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
@@ -40,7 +40,7 @@ func newPostgresStore(config Config) (*postgresStore, error) {
 		tableName = "events"
 	}
 
-	return &postgresStore{
+	return &pgClient{
 		db:        db,
 		tableName: tableName,
 	}, nil
@@ -57,7 +57,7 @@ func quoteIdentifier(identifier string) string {
 
 // loadEvents retrieves events for the given stream using the specified options.
 // This is shared functionality used by both producer and consumer.
-func (p *postgresStore) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
+func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
 	query := fmt.Sprintf(`
 		SELECT event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s

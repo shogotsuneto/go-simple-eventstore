@@ -10,20 +10,20 @@ import (
 
 // PostgresEventConsumer provides consumer capabilities using PostgreSQL.
 type PostgresEventConsumer struct {
-	*postgresStore
+	*pgClient
 	subscriptions map[string][]*PostgresSubscription
 	subsMu        sync.RWMutex
 }
 
 // NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration.
 func NewPostgresEventConsumer(config Config) (*PostgresEventConsumer, error) {
-	store, err := newPostgresStore(config)
+	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PostgresEventConsumer{
-		postgresStore: store,
+		pgClient:      client,
 		subscriptions: make(map[string][]*PostgresSubscription),
 	}, nil
 }
@@ -160,7 +160,7 @@ func (s *PostgresSubscription) start() {
 // loadInitialEvents loads any existing events that match our criteria.
 func (s *PostgresSubscription) loadInitialEvents() {
 	// Safety check - don't try to load if store or db is nil
-	if s.store == nil || s.store.postgresStore == nil || s.store.db == nil {
+	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
 		return
 	}
 
@@ -195,7 +195,7 @@ func (s *PostgresSubscription) loadInitialEvents() {
 // pollForEvents polls the database for new events.
 func (s *PostgresSubscription) pollForEvents() {
 	// Safety check - don't try to poll if store or db is nil
-	if s.store == nil || s.store.postgresStore == nil || s.store.db == nil {
+	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
 		return
 	}
 

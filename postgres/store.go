@@ -10,18 +10,18 @@ import (
 
 // PostgresEventStore is a PostgreSQL implementation of EventStore.
 type PostgresEventStore struct {
-	*postgresStore
+	*pgClient
 }
 
 // NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
 func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
-	store, err := newPostgresStore(config)
+	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PostgresEventStore{
-		postgresStore: store,
+		pgClient: client,
 	}, nil
 }
 

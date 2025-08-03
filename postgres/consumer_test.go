@@ -11,7 +11,7 @@ func TestPostgresEventConsumer_Retrieve_InvalidConnection(t *testing.T) {
 	// Test that Retrieve method exists and can be called
 	// This is a minimal test since we don't have a real DB connection in unit tests
 	store := &PostgresEventConsumer{
-		postgresStore: &postgresStore{
+		pgClient: &pgClient{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
@@ -30,7 +30,7 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 	// Test that Subscribe method exists and can be called
 	// This is a minimal test since we don't have a real DB connection in unit tests
 	store := &PostgresEventConsumer{
-		postgresStore: &postgresStore{
+		pgClient: &pgClient{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
@@ -60,7 +60,7 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.T) {
 	// Test that polling interval can be configured
 	store := &PostgresEventConsumer{
-		postgresStore: &postgresStore{
+		pgClient: &pgClient{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
@@ -103,7 +103,7 @@ func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.
 func TestPostgresEventConsumer_Subscribe_DefaultPollingInterval(t *testing.T) {
 	// Test that default polling interval is used when not specified
 	store := &PostgresEventConsumer{
-		postgresStore: &postgresStore{
+		pgClient: &pgClient{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
