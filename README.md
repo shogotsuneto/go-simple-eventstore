@@ -28,6 +28,22 @@ type EventStore interface {
     // Load retrieves events for the given stream using the specified options.
     Load(streamID string, opts LoadOptions) ([]Event, error)
 }
+
+type EventConsumer interface {
+    // Poll retrieves events from a stream in a one-time polling operation
+    Poll(streamID string, opts ConsumeOptions) ([]Event, error)
+    // Subscribe creates a subscription to a stream for continuous event consumption
+    Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
+}
+
+type EventSubscription interface {
+    // Events returns a channel that receives events as they are appended to the stream
+    Events() <-chan Event
+    // Errors returns a channel that receives any errors during subscription
+    Errors() <-chan error
+    // Close stops the subscription and releases resources
+    Close() error
+}
 ```
 
 ## 🔌 Backend Adapters
@@ -84,6 +100,51 @@ func main() {
 }
 ```
 
+### Consuming Events with Polling
+
+```go
+// Poll for events in batches
+events, err := store.Poll("user-123", eventstore.ConsumeOptions{
+    FromVersion: 0,
+    BatchSize: 100,
+})
+if err != nil {
+    panic(err)
+}
+
+for _, event := range events {
+    // Process each event...
+}
+```
+
+### Consuming Events with Subscriptions
+
+```go
+// Subscribe to events for real-time processing
+subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
+    FromVersion: 0,
+    BatchSize: 10,
+})
+if err != nil {
+    panic(err)
+}
+defer subscription.Close()
+
+// Handle events as they arrive
+go func() {
+    for {
+        select {
+        case event := <-subscription.Events():
+            // Process event in real-time
+            fmt.Printf("Received: %s\n", event.Type)
+        case err := <-subscription.Errors():
+            // Handle subscription errors
+            fmt.Printf("Error: %v\n", err)
+        }
+    }
+}()
+```
+
 ### Using PostgreSQL Backend
 
 ```go
@@ -116,17 +177,20 @@ func main() {
 
 ### Running the Examples
 
-See the [hello-world example](examples/hello-world/) for a complete demonstration of both backends.
+See the examples directory for complete demonstrations:
 
-### Running PostgreSQL Examples
-
-Make sure you have PostgreSQL running:
+- [hello-world example](examples/hello-world/) - Basic event store operations
+- [consumer example](examples/consumer-example/) - Event consumption with polling and subscriptions  
+- [postgres example](examples/postgres-example/) - PostgreSQL backend usage
 
 ```bash
-# Start PostgreSQL for testing
-make start-postgres
+# Run the basic hello-world example
+make run-hello-world
 
-# Run the basic PostgreSQL example
+# Run the consumer example (polling and subscriptions)
+make run-consumer-example
+
+# Run the PostgreSQL example
 make run-postgres-example
 ```
 
@@ -138,6 +202,8 @@ This project focuses on the essential functionality needed for event sourcing:
 2. **Stream-based organization** - Events are organized by stream ID
 3. **Cursor-based loading** - Efficient event retrieval with pagination support
 4. **Database agnostic** - Unified interface across different storage backends
+5. **Event consumption** - Support for both polling and subscription-based event consumption
+6. **Real-time projections** - Subscribe to events as they are appended for live updates
 
 ## 🧪 Testing
 
