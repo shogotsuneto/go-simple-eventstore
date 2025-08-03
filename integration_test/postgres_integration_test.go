@@ -116,7 +116,7 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
 	defer db.Close()
 
 	streamID := "non-existent-stream-" + time.Now().Format("20060102150405")
-	events, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	events, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -192,13 +192,13 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 1, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load with version failed: %v", err)
 	}
 
 	if len(loadedEvents) != 2 {
-		t.Fatalf("Expected 2 events with fromVersion 1, got %d", len(loadedEvents))
+		t.Fatalf("Expected 2 events with afterVersion 1, got %d", len(loadedEvents))
 	}
 
 	if loadedEvents[0].Type != "Event2" {
@@ -227,7 +227,7 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 2})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 2})
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 	}
 	
 	// Verify all events were stored with correct versions
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 	}
 
 	// Verify the event was stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 	}
 
 	// Verify both events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
 	}
 
 	// Verify both events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -576,7 +576,7 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 
 	// Test that Load also works with the custom table name
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed from custom table: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestPostgresEventStore_Integration_DefaultTableName(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed with old constructor: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T)
 	}
 
 	// Test that Load also works with the default table name
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed from default table: %v", err)
 	}

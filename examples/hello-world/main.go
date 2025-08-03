@@ -77,7 +77,7 @@ func main() {
 	// Load events from the stream
 	fmt.Printf("\n📖 Loading events from stream '%s'...\n", streamID)
 
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		log.Fatalf("Failed to load events: %v", err)
 	}
@@ -100,7 +100,7 @@ func main() {
 	fmt.Println("🔍 Demonstrating version-based loading...")
 	fmt.Println("Loading events starting from version 1:")
 
-	versionEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 1, Limit: 1})
+	versionEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 1, Limit: 1})
 	if err != nil {
 		log.Fatalf("Failed to load events with version: %v", err)
 	}

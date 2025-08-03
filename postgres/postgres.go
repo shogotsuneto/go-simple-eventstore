@@ -97,7 +97,7 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 		ORDER BY version ASC
 	`, quoteIdentifier(p.tableName))
 
-	args := []interface{}{streamID, opts.FromVersion}
+	args := []interface{}{streamID, opts.AfterVersion}
 
 	if opts.Limit > 0 {
 		query += " LIMIT $3"

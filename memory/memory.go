@@ -95,7 +95,7 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 	// Find starting position
 	var result []eventstore.Event
 	for _, event := range stream {
-		if event.Version > opts.FromVersion {
+		if event.Version > opts.AfterVersion {
 			result = append(result, event)
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
