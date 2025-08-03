@@ -32,9 +32,3 @@ type EventConsumer interface {
 	Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
 }
 
-// EventStoreConsumer combines both EventStore and EventConsumer interfaces.
-// This is useful for implementations that provide both producer and consumer functionality.
-type EventStoreConsumer interface {
-	EventStore
-	EventConsumer
-}
