@@ -5,6 +5,7 @@ package integration_test
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func setupTestConsumer(t *testing.T) (eventstore.EventConsumer, eventstore.Event
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	tableName := "consumer_events_" + time.Now().Format("20060102150405")
+	tableName := fmt.Sprintf("consumer_events_%d", time.Now().UnixNano())
 	if err := postgres.InitSchema(db, tableName); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_WithBatchSize(t *testing.T) 
 
 func TestPostgresEventConsumer_Integration_Subscribe_RealtimeEvents(t *testing.T) {
 	consumer, store, db := setupTestConsumerWithTableName(t, 
-		"subscribe_events_"+time.Now().Format("20060102150405"), 
+		fmt.Sprintf("subscribe_events_%d", time.Now().UnixNano()), 
 		100*time.Millisecond) // Fast polling for testing
 	defer db.Close()
 
@@ -295,7 +296,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_ExistingEvents(t *testing.T
 
 func TestPostgresEventConsumer_Integration_Subscribe_MultipleStreams(t *testing.T) {
 	consumer, store, db := setupTestConsumerWithTableName(t, 
-		"multistream_events_"+time.Now().Format("20060102150405"), 
+		fmt.Sprintf("multistream_events_%d", time.Now().UnixNano()), 
 		50*time.Millisecond) // Fast polling for testing
 	defer db.Close()
 
@@ -379,7 +380,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_PollingInterval(t *testing.
 	// Test with longer polling interval to verify timing
 	pollingInterval := 500 * time.Millisecond
 	consumer, store, db := setupTestConsumerWithTableName(t, 
-		"polling_events_"+time.Now().Format("20060102150405"), 
+		fmt.Sprintf("polling_events_%d", time.Now().UnixNano()), 
 		pollingInterval)
 	defer db.Close()
 
@@ -569,7 +570,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 }
 
 func TestPostgresEventConsumer_Integration_CustomTableName(t *testing.T) {
-	customTableName := "custom_consumer_events_" + time.Now().Format("20060102150405")
+	customTableName := fmt.Sprintf("custom_consumer_events_%d", time.Now().UnixNano())
 	consumer, store, db := setupTestConsumerWithTableName(t, customTableName, 1*time.Second)
 	defer db.Close()
 
