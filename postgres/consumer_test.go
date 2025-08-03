@@ -15,7 +15,8 @@ func TestPostgresEventConsumer_Retrieve_InvalidConnection(t *testing.T) {
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions: make(map[string][]*PostgresSubscription),
+		subscriptions:   make(map[string][]*PostgresSubscription),
+		pollingInterval: 1 * time.Second,
 	}
 
 	// We expect this to panic/error since db is nil, so we just test the method exists
@@ -34,7 +35,8 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions: make(map[string][]*PostgresSubscription),
+		subscriptions:   make(map[string][]*PostgresSubscription),
+		pollingInterval: 2 * time.Second,
 	}
 
 	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
@@ -58,21 +60,21 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 }
 
 func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.T) {
-	// Test that polling interval can be configured
+	// Test that polling interval can be configured at consumer level
+	customInterval := 5 * time.Second
 	store := &PostgresEventConsumer{
 		pgClient: &pgClient{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions: make(map[string][]*PostgresSubscription),
+		subscriptions:   make(map[string][]*PostgresSubscription),
+		pollingInterval: customInterval,
 	}
 
-	// Test with custom polling interval
-	customInterval := 5 * time.Second
+	// Test subscription creation
 	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
-		FromVersion:     0,
-		BatchSize:       10,
-		PollingInterval: customInterval,
+		FromVersion: 0,
+		BatchSize:   10,
 	})
 
 	// Subscribe should succeed initially (it starts asynchronously)
@@ -84,7 +86,7 @@ func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.
 		t.Error("Expected non-nil subscription")
 	}
 
-	// Verify the subscription has the correct polling interval
+	// Verify the subscription has the correct polling interval from the consumer
 	pgSub, ok := subscription.(*PostgresSubscription)
 	if !ok {
 		t.Error("Expected PostgresSubscription type")
@@ -101,20 +103,20 @@ func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.
 }
 
 func TestPostgresEventConsumer_Subscribe_DefaultPollingInterval(t *testing.T) {
-	// Test that default polling interval is used when not specified
+	// Test that default polling interval is used when not specified in constructor
 	store := &PostgresEventConsumer{
 		pgClient: &pgClient{
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions: make(map[string][]*PostgresSubscription),
+		subscriptions:   make(map[string][]*PostgresSubscription),
+		pollingInterval: 1 * time.Second, // Default interval
 	}
 
-	// Test without specifying polling interval (should use default)
+	// Test subscription creation
 	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
 		FromVersion: 0,
 		BatchSize:   10,
-		// PollingInterval not specified, should default to 1 second
 	})
 
 	// Subscribe should succeed initially (it starts asynchronously)
@@ -182,5 +184,37 @@ func TestPostgresSubscription_Close(t *testing.T) {
 	err = sub.Close()
 	if err != nil {
 		t.Errorf("Second close should not error: %v", err)
+	}
+}
+
+func TestNewPostgresEventConsumer_PollingInterval(t *testing.T) {
+	// Test that NewPostgresEventConsumer correctly sets polling interval
+	customInterval := 3 * time.Second
+	consumer := NewPostgresEventConsumer(nil, "events", customInterval)
+	
+	pgConsumer, ok := consumer.(*PostgresEventConsumer)
+	if !ok {
+		t.Error("Expected PostgresEventConsumer type")
+		return
+	}
+	
+	if pgConsumer.pollingInterval != customInterval {
+		t.Errorf("Expected polling interval %v, got %v", customInterval, pgConsumer.pollingInterval)
+	}
+}
+
+func TestNewPostgresEventConsumer_DefaultPollingInterval(t *testing.T) {
+	// Test that NewPostgresEventConsumer uses default when interval is 0
+	consumer := NewPostgresEventConsumer(nil, "events", 0)
+	
+	pgConsumer, ok := consumer.(*PostgresEventConsumer)
+	if !ok {
+		t.Error("Expected PostgresEventConsumer type")
+		return
+	}
+	
+	expectedDefault := 1 * time.Second
+	if pgConsumer.pollingInterval != expectedDefault {
+		t.Errorf("Expected default polling interval %v, got %v", expectedDefault, pgConsumer.pollingInterval)
 	}
 }

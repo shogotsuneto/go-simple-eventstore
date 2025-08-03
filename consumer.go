@@ -1,17 +1,12 @@
 // Package eventstore provides consumer interfaces for event consumption.
 package eventstore
 
-import "time"
-
 // ConsumeOptions contains options for consuming events from a stream.
 type ConsumeOptions struct {
 	// FromVersion specifies where to start consuming events from
 	FromVersion int64
 	// BatchSize specifies the maximum number of events to return in each batch
 	BatchSize int
-	// PollingInterval specifies how often to poll for new events during subscriptions.
-	// Only applies to subscription-based consumers. If not specified, defaults to 1 second.
-	PollingInterval time.Duration
 }
 
 // EventSubscription represents an active subscription to a stream.

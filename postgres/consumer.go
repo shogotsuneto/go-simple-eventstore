@@ -12,14 +12,19 @@ import (
 // PostgresEventConsumer provides consumer capabilities using PostgreSQL.
 type PostgresEventConsumer struct {
 	*pgClient
-	subscriptions map[string][]*PostgresSubscription
-	subsMu        sync.RWMutex
+	subscriptions   map[string][]*PostgresSubscription
+	subsMu          sync.RWMutex
+	pollingInterval time.Duration
 }
 
-// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection and table name.
-func NewPostgresEventConsumer(db *sql.DB, tableName string) eventstore.EventConsumer {
+// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection, table name, and polling interval.
+func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) eventstore.EventConsumer {
 	if tableName == "" {
 		tableName = "events"
+	}
+	
+	if pollingInterval <= 0 {
+		pollingInterval = 1 * time.Second
 	}
 
 	return &PostgresEventConsumer{
@@ -27,7 +32,8 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string) eventstore.EventCons
 			db:        db,
 			tableName: tableName,
 		},
-		subscriptions: make(map[string][]*PostgresSubscription),
+		subscriptions:   make(map[string][]*PostgresSubscription),
+		pollingInterval: pollingInterval,
 	}
 }
 
@@ -45,17 +51,11 @@ func (s *PostgresEventConsumer) Subscribe(streamID string, opts eventstore.Consu
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
-	// Set default polling interval if not specified
-	pollingInterval := opts.PollingInterval
-	if pollingInterval <= 0 {
-		pollingInterval = 1 * time.Second
-	}
-
 	sub := &PostgresSubscription{
 		streamID:        streamID,
 		fromVersion:     opts.FromVersion,
 		batchSize:       opts.BatchSize,
-		pollingInterval: pollingInterval,
+		pollingInterval: s.pollingInterval,
 		eventsCh:        make(chan eventstore.Event, 100), // Buffered channel
 		errorsCh:        make(chan error, 10),
 		closeCh:         make(chan struct{}),
