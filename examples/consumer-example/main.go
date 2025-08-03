@@ -28,8 +28,8 @@ func main() {
 	fmt.Println("🚀 Go Simple EventStore - Consumer Example")
 	fmt.Println("==========================================")
 
-	// Create a new in-memory event store
-	store := memory.NewInMemoryEventStore()
+	// Create a new in-memory event store with consumer capabilities
+	store := memory.NewInMemoryEventConsumer()
 
 	// First, let's demonstrate polling
 	fmt.Println("\n📊 Demonstrating Polling...")
@@ -42,7 +42,7 @@ func main() {
 	fmt.Println("\n🎉 Consumer example completed successfully!")
 }
 
-func demonstratePolling(store *memory.InMemoryEventStore) {
+func demonstratePolling(store *memory.InMemoryEventConsumer) {
 	// Add some initial events
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
@@ -123,7 +123,7 @@ func demonstratePolling(store *memory.InMemoryEventStore) {
 	}
 }
 
-func demonstrateSubscriptions(store *memory.InMemoryEventStore) {
+func demonstrateSubscriptions(store *memory.InMemoryEventConsumer) {
 	streamID := "user-789"
 
 	// Create a subscription starting from the beginning

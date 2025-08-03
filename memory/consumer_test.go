@@ -7,8 +7,8 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-func TestInMemoryEventStore_Poll(t *testing.T) {
-	store := NewInMemoryEventStore()
+func TestInMemoryEventConsumer_Poll(t *testing.T) {
+	store := NewInMemoryEventConsumer()
 
 	// Add some events to the store
 	events := []eventstore.Event{
@@ -52,8 +52,8 @@ func TestInMemoryEventStore_Poll(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventStore_Subscribe(t *testing.T) {
-	store := NewInMemoryEventStore()
+func TestInMemoryEventConsumer_Subscribe(t *testing.T) {
+	store := NewInMemoryEventConsumer()
 
 	// Subscribe to a stream
 	subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
@@ -104,8 +104,8 @@ func TestInMemoryEventStore_Subscribe(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventStore_Subscribe_WithFromVersion(t *testing.T) {
-	store := NewInMemoryEventStore()
+func TestInMemoryEventConsumer_Subscribe_WithFromVersion(t *testing.T) {
+	store := NewInMemoryEventConsumer()
 
 	// Add some initial events
 	initialEvents := []eventstore.Event{
@@ -168,8 +168,8 @@ func TestInMemoryEventStore_Subscribe_WithFromVersion(t *testing.T) {
 	}
 }
 
-func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
-	store := NewInMemoryEventStore()
+func TestInMemoryEventConsumer_Subscribe_Close(t *testing.T) {
+	store := NewInMemoryEventConsumer()
 
 	subscription, err := store.Subscribe("user-123", eventstore.ConsumeOptions{
 		FromVersion: 0,
@@ -192,9 +192,9 @@ func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
 	}
 
 	// Verify subscription is removed from store
-	store.mu.RLock()
+	store.subsMu.RLock()
 	subs := store.subscriptions["user-123"]
-	store.mu.RUnlock()
+	store.subsMu.RUnlock()
 
 	if len(subs) != 0 {
 		t.Errorf("Expected 0 subscriptions, got %d", len(subs))

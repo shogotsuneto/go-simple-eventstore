@@ -6,28 +6,33 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-func TestPostgresEventStore_Poll_InvalidConnection(t *testing.T) {
+func TestPostgresEventConsumer_Poll_InvalidConnection(t *testing.T) {
 	// Test that Poll method exists and can be called
 	// This is a minimal test since we don't have a real DB connection in unit tests
-	store := &PostgresEventStore{
-		db:        nil, // This will cause an error when actually used
-		tableName: "events",
+	store := &PostgresEventConsumer{
+		PostgresEventStore: &PostgresEventStore{
+			db:        nil, // This will cause an error when actually used
+			tableName: "events",
+		},
+		subscriptions: make(map[string][]*PostgresSubscription),
 	}
 
 	// We expect this to panic/error since db is nil, so we just test the method exists
 	// In real usage, this would be tested with integration tests
-	if store.db == nil && store.tableName == "events" {
+	if store.PostgresEventStore.db == nil && store.PostgresEventStore.tableName == "events" {
 		// Test passes - method signature is correct
 		t.Log("Poll method signature is correct")
 	}
 }
 
-func TestPostgresEventStore_Subscribe_InvalidConnection(t *testing.T) {
+func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 	// Test that Subscribe method exists and can be called
 	// This is a minimal test since we don't have a real DB connection in unit tests
-	store := &PostgresEventStore{
-		db:            nil, // This will cause an error when actually used
-		tableName:     "events",
+	store := &PostgresEventConsumer{
+		PostgresEventStore: &PostgresEventStore{
+			db:        nil, // This will cause an error when actually used
+			tableName: "events",
+		},
 		subscriptions: make(map[string][]*PostgresSubscription),
 	}
 
@@ -74,7 +79,7 @@ func TestPostgresSubscription_Close(t *testing.T) {
 		eventsCh: make(chan eventstore.Event),
 		errorsCh: make(chan error),
 		closeCh:  make(chan struct{}),
-		store: &PostgresEventStore{
+		store: &PostgresEventConsumer{
 			subscriptions: make(map[string][]*PostgresSubscription),
 		},
 		streamID: "test-stream",
