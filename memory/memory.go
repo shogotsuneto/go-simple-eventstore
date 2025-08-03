@@ -121,8 +121,8 @@ func (s *InMemoryEventConsumer) Append(streamID string, events []eventstore.Even
 	return nil
 }
 
-// Poll retrieves events from a stream in a retrieval operation.
-func (s *InMemoryEventConsumer) Poll(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+// Retrieve retrieves events from a stream in a retrieval operation.
+func (s *InMemoryEventConsumer) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
 	loadOpts := eventstore.LoadOptions{
 		FromVersion: opts.FromVersion,
 		Limit:       opts.BatchSize,

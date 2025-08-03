@@ -28,8 +28,8 @@ func NewPostgresEventConsumer(config Config) (*PostgresEventConsumer, error) {
 	}, nil
 }
 
-// Poll retrieves events from a stream in a retrieval operation.
-func (s *PostgresEventConsumer) Poll(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+// Retrieve retrieves events from a stream in a retrieval operation.
+func (s *PostgresEventConsumer) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
 	loadOpts := eventstore.LoadOptions{
 		FromVersion: opts.FromVersion,
 		Limit:       opts.BatchSize,
@@ -134,7 +134,7 @@ func (s *PostgresSubscription) start() {
 	s.loadInitialEvents()
 
 	// Start polling for new events
-	ticker := time.NewTicker(1 * time.Second) // Poll every second
+	ticker := time.NewTicker(1 * time.Second) // Check every second
 	defer ticker.Stop()
 
 	for {

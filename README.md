@@ -30,8 +30,8 @@ type EventStore interface {
 }
 
 type EventConsumer interface {
-    // Poll retrieves events from a stream in a retrieval operation
-    Poll(streamID string, opts ConsumeOptions) ([]Event, error)
+    // Retrieve retrieves events from a stream in a retrieval operation
+    Retrieve(streamID string, opts ConsumeOptions) ([]Event, error)
     // Subscribe creates a subscription to a stream for continuous event consumption
     Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
 }
@@ -100,11 +100,11 @@ func main() {
 }
 ```
 
-### Consuming Events with Polling
+### Consuming Events with Retrieving
 
 ```go
-// Poll for events in batches
-events, err := store.Poll("user-123", eventstore.ConsumeOptions{
+// Retrieve events in batches
+events, err := store.Retrieve("user-123", eventstore.ConsumeOptions{
     FromVersion: 0,
     BatchSize: 100,
 })

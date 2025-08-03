@@ -31,9 +31,9 @@ func main() {
 	// Create a new in-memory event store with consumer capabilities
 	store := memory.NewInMemoryEventConsumer()
 
-	// First, let's demonstrate polling
-	fmt.Println("\n📊 Demonstrating Polling...")
-	demonstratePolling(store)
+	// First, let's demonstrate retrieving
+	fmt.Println("\n📊 Demonstrating Retrieving...")
+	demonstrateRetrieving(store)
 
 	// Then, let's demonstrate subscriptions
 	fmt.Println("\n📡 Demonstrating Subscriptions...")
@@ -42,7 +42,7 @@ func main() {
 	fmt.Println("\n🎉 Consumer example completed successfully!")
 }
 
-func demonstratePolling(store *memory.InMemoryEventConsumer) {
+func demonstrateRetrieving(store *memory.InMemoryEventConsumer) {
 	// Add some initial events
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
@@ -69,18 +69,18 @@ func demonstratePolling(store *memory.InMemoryEventConsumer) {
 
 	fmt.Printf("Added 1 event to stream '%s'\n", streamID)
 
-	// Poll for events from the beginning
-	fmt.Println("Polling for events from the beginning...")
-	polledEvents, err := store.Poll(streamID, eventstore.ConsumeOptions{
+	// Retrieve events from the beginning
+	fmt.Println("Retrieving events from the beginning...")
+	retrievedEvents, err := store.Retrieve(streamID, eventstore.ConsumeOptions{
 		FromVersion: 0,
 		BatchSize:   10,
 	})
 	if err != nil {
-		log.Fatalf("Failed to poll events: %v", err)
+		log.Fatalf("Failed to retrieve events: %v", err)
 	}
 
-	fmt.Printf("Polled %d events:\n", len(polledEvents))
-	for _, event := range polledEvents {
+	fmt.Printf("Retrieved %d events:\n", len(retrievedEvents))
+	for _, event := range retrievedEvents {
 		fmt.Printf("  - %s (Version %d): %s\n", event.Type, event.Version, string(event.Data))
 	}
 
@@ -107,17 +107,17 @@ func demonstratePolling(store *memory.InMemoryEventConsumer) {
 		log.Fatalf("Failed to append more events: %v", err)
 	}
 
-	// Poll for new events only (from version 1)
-	fmt.Println("Polling for new events only (from version 1)...")
-	newEvents, err := store.Poll(streamID, eventstore.ConsumeOptions{
+	// Retrieve new events only (from version 1)
+	fmt.Println("Retrieving new events only (from version 1)...")
+	newEvents, err := store.Retrieve(streamID, eventstore.ConsumeOptions{
 		FromVersion: 1,
 		BatchSize:   10,
 	})
 	if err != nil {
-		log.Fatalf("Failed to poll new events: %v", err)
+		log.Fatalf("Failed to retrieve new events: %v", err)
 	}
 
-	fmt.Printf("Polled %d new events:\n", len(newEvents))
+	fmt.Printf("Retrieved %d new events:\n", len(newEvents))
 	for _, event := range newEvents {
 		fmt.Printf("  - %s (Version %d): %s\n", event.Type, event.Version, string(event.Data))
 	}

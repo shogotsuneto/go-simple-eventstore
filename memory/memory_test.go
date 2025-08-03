@@ -405,7 +405,7 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 
 // Tests for InMemoryEventConsumer functionality
 
-func TestInMemoryEventConsumer_Poll(t *testing.T) {
+func TestInMemoryEventConsumer_Retrieve(t *testing.T) {
 	store := NewInMemoryEventConsumer()
 
 	// Add some events to the store
@@ -419,34 +419,34 @@ func TestInMemoryEventConsumer_Poll(t *testing.T) {
 		t.Fatalf("Failed to append events: %v", err)
 	}
 
-	// Test polling from version 0
-	polledEvents, err := store.Poll("user-123", eventstore.ConsumeOptions{
+	// Test retrieving events from version 0
+	retrievedEvents, err := store.Retrieve("user-123", eventstore.ConsumeOptions{
 		FromVersion: 0,
 		BatchSize:   10,
 	})
 	if err != nil {
-		t.Fatalf("Failed to poll events: %v", err)
+		t.Fatalf("Failed to retrieve events: %v", err)
 	}
 
-	if len(polledEvents) != 2 {
-		t.Errorf("Expected 2 events, got %d", len(polledEvents))
+	if len(retrievedEvents) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(retrievedEvents))
 	}
 
-	// Test polling from version 1 (should get only the second event)
-	polledEvents, err = store.Poll("user-123", eventstore.ConsumeOptions{
+	// Test retrieving events from version 1 (should get only the second event)
+	retrievedEvents, err = store.Retrieve("user-123", eventstore.ConsumeOptions{
 		FromVersion: 1,
 		BatchSize:   10,
 	})
 	if err != nil {
-		t.Fatalf("Failed to poll events: %v", err)
+		t.Fatalf("Failed to retrieve events: %v", err)
 	}
 
-	if len(polledEvents) != 1 {
-		t.Errorf("Expected 1 event, got %d", len(polledEvents))
+	if len(retrievedEvents) != 1 {
+		t.Errorf("Expected 1 event, got %d", len(retrievedEvents))
 	}
 
-	if polledEvents[0].Type != "UserUpdated" {
-		t.Errorf("Expected UserUpdated event, got %s", polledEvents[0].Type)
+	if retrievedEvents[0].Type != "UserUpdated" {
+		t.Errorf("Expected UserUpdated event, got %s", retrievedEvents[0].Type)
 	}
 }
 

@@ -1,12 +1,12 @@
 # Consumer Example
 
-This example demonstrates how to consume events from the event store using both polling and subscription approaches.
+This example demonstrates how to consume events from the event store using both retrieving and subscription approaches.
 
 ## What this example shows
 
-1. **Polling** - Retrieval of events from a stream
-   - Poll for all events from the beginning
-   - Poll for new events from a specific version
+1. **Retrieving** - Retrieval of events from a stream
+   - Retrieve all events from the beginning
+   - Retrieve new events from a specific version
    - Useful for batch processing scenarios
 
 2. **Subscriptions** - Continuous event consumption
@@ -17,7 +17,7 @@ This example demonstrates how to consume events from the event store using both 
 
 ## Features demonstrated
 
-- **Event Consumer Interface** - Both polling and subscription methods
+- **Event Consumer Interface** - Both retrieving and subscription methods
 - **Version-based consumption** - Start consuming from a specific event version
 - **Batch size control** - Limit the number of events returned in each batch
 - **Real-time notifications** - Events are delivered as they are appended
@@ -40,8 +40,8 @@ go run main.go
 ### EventConsumer interface
 ```go
 type EventConsumer interface {
-    // Poll retrieves events from a stream in a retrieval operation
-    Poll(streamID string, opts ConsumeOptions) ([]Event, error)
+    // Retrieve retrieves events from a stream in a retrieval operation
+    Retrieve(streamID string, opts ConsumeOptions) ([]Event, error)
     // Subscribe creates a subscription to a stream for continuous event consumption
     Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
 }
@@ -71,7 +71,7 @@ type ConsumeOptions struct {
 
 ## When to use each approach
 
-**Use Polling when:**
+**Use Retrieving when:**
 - Processing events in batches
 - Implementing periodic synchronization
 - Building read models that don't need real-time updates
