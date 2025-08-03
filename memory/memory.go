@@ -106,32 +106,57 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 	return result, nil
 }
 
-// Retrieve retrieves events from a stream in a retrieval operation.
-func (s *InMemoryEventStore) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	loadOpts := eventstore.LoadOptions{
-		FromVersion: opts.FromVersion,
-		Limit:       opts.BatchSize,
+// Retrieve retrieves events from all streams in a retrieval operation.
+func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []eventstore.Event
+	
+	// Collect events from all streams
+	for _, stream := range s.streams {
+		for _, event := range stream {
+			// Filter by timestamp
+			if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
+				result = append(result, event)
+			}
+		}
 	}
-	return s.Load(streamID, loadOpts)
+	
+	// Sort events by timestamp (to maintain order across streams)
+	// Simple bubble sort for now (could be optimized later)
+	for i := 0; i < len(result); i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[i].Timestamp.After(result[j].Timestamp) {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	
+	// Apply batch size limit
+	if opts.BatchSize > 0 && len(result) > opts.BatchSize {
+		result = result[:opts.BatchSize]
+	}
+
+	return result, nil
 }
 
-// Subscribe creates a subscription to a stream for continuous event consumption.
-func (s *InMemoryEventStore) Subscribe(streamID string, opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
+// Subscribe creates a subscription to all streams for continuous event consumption.
+func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
 	sub := &InMemorySubscription{
-		streamID:    streamID,
-		fromVersion: opts.FromVersion,
-		batchSize:   opts.BatchSize,
-		eventsCh:    make(chan eventstore.Event, 100), // Buffered channel
-		errorsCh:    make(chan error, 10),
-		closeCh:     make(chan struct{}),
-		store:       s,
+		fromTimestamp: opts.FromTimestamp,
+		batchSize:     opts.BatchSize,
+		eventsCh:      make(chan eventstore.Event, 100), // Buffered channel
+		errorsCh:      make(chan error, 10),
+		closeCh:       make(chan struct{}),
+		store:         s,
 	}
 
-	// Add subscription to the list
-	s.subscriptions[streamID] = append(s.subscriptions[streamID], sub)
+	// Add subscription to a global list (using empty string as key for all streams)
+	s.subscriptions[""] = append(s.subscriptions[""], sub)
 
 	// Start subscription goroutine
 	go sub.start()
@@ -139,10 +164,11 @@ func (s *InMemoryEventStore) Subscribe(streamID string, opts eventstore.ConsumeO
 	return sub, nil
 }
 
-// notifySubscriptions notifies all subscriptions for a stream about new events.
+// notifySubscriptions notifies all subscriptions for all streams about new events.
 func (s *InMemoryEventStore) notifySubscriptions(streamID string, events []eventstore.Event) {
 	s.subsMu.RLock()
-	subs, exists := s.subscriptions[streamID]
+	// Get global subscriptions (using empty string as key for all streams)
+	subs, exists := s.subscriptions[""]
 	if !exists {
 		s.subsMu.RUnlock()
 		return
@@ -151,10 +177,11 @@ func (s *InMemoryEventStore) notifySubscriptions(streamID string, events []event
 
 	for _, sub := range subs {
 		for _, event := range events {
-			if event.Version > sub.fromVersion {
+			// Filter by timestamp instead of version
+			if sub.fromTimestamp.IsZero() || event.Timestamp.After(sub.fromTimestamp) || event.Timestamp.Equal(sub.fromTimestamp) {
 				select {
 				case sub.eventsCh <- event:
-					sub.fromVersion = event.Version // Update the subscription's position
+					sub.fromTimestamp = event.Timestamp // Update the subscription's position
 				case <-sub.closeCh:
 					// Subscription is closed, skip
 					continue
@@ -168,36 +195,36 @@ func (s *InMemoryEventStore) notifySubscriptions(streamID string, events []event
 }
 
 // removeSubscription removes a subscription from the store.
-func (s *InMemoryEventStore) removeSubscription(streamID string, sub *InMemorySubscription) {
+func (s *InMemoryEventStore) removeSubscription(sub *InMemorySubscription) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
-	subs := s.subscriptions[streamID]
+	// Remove from global subscriptions (using empty string as key for all streams)
+	subs := s.subscriptions[""]
 	for i, existing := range subs {
 		if existing == sub {
 			// Remove subscription from slice
-			s.subscriptions[streamID] = append(subs[:i], subs[i+1:]...)
+			s.subscriptions[""] = append(subs[:i], subs[i+1:]...)
 			break
 		}
 	}
 
 	// Clean up empty subscription lists
-	if len(s.subscriptions[streamID]) == 0 {
-		delete(s.subscriptions, streamID)
+	if len(s.subscriptions[""]) == 0 {
+		delete(s.subscriptions, "")
 	}
 }
 
-// InMemorySubscription represents an active subscription to a stream in memory.
+// InMemorySubscription represents an active subscription to all streams in memory.
 type InMemorySubscription struct {
-	streamID    string
-	fromVersion int64
-	batchSize   int
-	eventsCh    chan eventstore.Event
-	errorsCh    chan error
-	closeCh     chan struct{}
-	store       *InMemoryEventStore
-	closed      bool
-	mu          sync.Mutex
+	fromTimestamp time.Time
+	batchSize     int
+	eventsCh      chan eventstore.Event
+	errorsCh      chan error
+	closeCh       chan struct{}
+	store         *InMemoryEventStore
+	closed        bool
+	mu            sync.Mutex
 }
 
 // Events returns a channel that receives events as they are appended to the stream.
@@ -221,33 +248,48 @@ func (s *InMemorySubscription) Close() error {
 
 	s.closed = true
 	close(s.closeCh)
-	s.store.removeSubscription(s.streamID, s)
+	s.store.removeSubscription(s)
 
 	return nil
 }
 
 // start begins the subscription lifecycle.
 func (s *InMemorySubscription) start() {
-	// Load existing events that match our criteria
+	// Load existing events from all streams that match our criteria
 	s.store.mu.RLock()
-	stream, exists := s.store.streams[s.streamID]
-	if exists {
+	var allEvents []eventstore.Event
+	for _, stream := range s.store.streams {
 		for _, event := range stream {
-			if event.Version > s.fromVersion {
-				select {
-				case s.eventsCh <- event:
-					s.fromVersion = event.Version
-					if s.batchSize > 0 && s.fromVersion >= int64(s.batchSize) {
-						break // Limit initial batch if specified
-					}
-				case <-s.closeCh:
-					s.store.mu.RUnlock()
-					return
-				}
+			if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
+				allEvents = append(allEvents, event)
 			}
 		}
 	}
 	s.store.mu.RUnlock()
+
+	// Sort events by timestamp to maintain order across streams
+	for i := 0; i < len(allEvents); i++ {
+		for j := i + 1; j < len(allEvents); j++ {
+			if allEvents[i].Timestamp.After(allEvents[j].Timestamp) {
+				allEvents[i], allEvents[j] = allEvents[j], allEvents[i]
+			}
+		}
+	}
+
+	// Send initial batch of events
+	count := 0
+	for _, event := range allEvents {
+		select {
+		case s.eventsCh <- event:
+			s.fromTimestamp = event.Timestamp
+			count++
+			if s.batchSize > 0 && count >= s.batchSize {
+				break // Limit initial batch if specified
+			}
+		case <-s.closeCh:
+			return
+		}
+	}
 
 	// Keep subscription alive until closed
 	<-s.closeCh

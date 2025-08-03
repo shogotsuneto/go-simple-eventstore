@@ -43,7 +43,7 @@ func main() {
 }
 
 func demonstrateRetrieving(store memory.EventStoreConsumer) {
-	// Add some initial events
+	// Add some initial events to different streams
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
 		Name:   "Jane Doe",
@@ -61,19 +61,45 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 		},
 	}
 
-	streamID := "user-456"
-	err := store.Append(streamID, events, -1)
+	streamID1 := "user-456"
+	err := store.Append(streamID1, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
 
-	fmt.Printf("Added 1 event to stream '%s'\n", streamID)
+	fmt.Printf("Added 1 event to stream '%s'\n", streamID1)
 
-	// Retrieve events from the beginning
-	fmt.Println("Retrieving events from the beginning...")
-	retrievedEvents, err := store.Retrieve(streamID, eventstore.ConsumeOptions{
-		FromVersion: 0,
-		BatchSize:   10,
+	// Add events to another stream
+	userCreatedData2, _ := json.Marshal(UserCreated{
+		UserID: "user-789",
+		Name:   "John Smith",
+		Email:  "john@example.com",
+	})
+
+	events2 := []eventstore.Event{
+		{
+			Type: "UserCreated",
+			Data: userCreatedData2,
+			Metadata: map[string]string{
+				"source":  "user-service",
+				"version": "1.0",
+			},
+		},
+	}
+
+	streamID2 := "user-789"
+	err = store.Append(streamID2, events2, -1)
+	if err != nil {
+		log.Fatalf("Failed to append events: %v", err)
+	}
+
+	fmt.Printf("Added 1 event to stream '%s'\n", streamID2)
+
+	// Retrieve events from all streams
+	fmt.Println("Retrieving events from all streams...")
+	retrievedEvents, err := store.Retrieve(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
 	})
 	if err != nil {
 		log.Fatalf("Failed to retrieve events: %v", err)
@@ -81,10 +107,13 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 
 	fmt.Printf("Retrieved %d events:\n", len(retrievedEvents))
 	for _, event := range retrievedEvents {
-		fmt.Printf("  - %s (Version %d): %s\n", event.Type, event.Version, string(event.Data))
+		fmt.Printf("  - %s (Version %d, Timestamp %s): %s\n", event.Type, event.Version, event.Timestamp.Format(time.RFC3339), string(event.Data))
 	}
 
-	// Add more events
+	// Add more events after a small delay
+	time.Sleep(100 * time.Millisecond)
+	startTime := time.Now()
+	
 	userEmailChangedData, _ := json.Marshal(UserEmailChanged{
 		UserID:   "user-456",
 		NewEmail: "jane.doe@example.com",
@@ -102,16 +131,16 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID, moreEvents, -1)
+	err = store.Append(streamID1, moreEvents, -1)
 	if err != nil {
 		log.Fatalf("Failed to append more events: %v", err)
 	}
 
-	// Retrieve new events only (from version 1)
-	fmt.Println("Retrieving new events only (from version 1)...")
-	newEvents, err := store.Retrieve(streamID, eventstore.ConsumeOptions{
-		FromVersion: 1,
-		BatchSize:   10,
+	// Retrieve new events only (from startTime)
+	fmt.Printf("Retrieving new events only (from %s)...\n", startTime.Format(time.RFC3339))
+	newEvents, err := store.Retrieve(eventstore.ConsumeOptions{
+		FromTimestamp: startTime,
+		BatchSize:     10,
 	})
 	if err != nil {
 		log.Fatalf("Failed to retrieve new events: %v", err)
@@ -119,18 +148,19 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 
 	fmt.Printf("Retrieved %d new events:\n", len(newEvents))
 	for _, event := range newEvents {
-		fmt.Printf("  - %s (Version %d): %s\n", event.Type, event.Version, string(event.Data))
+		fmt.Printf("  - %s (Version %d, Timestamp %s): %s\n", event.Type, event.Version, event.Timestamp.Format(time.RFC3339), string(event.Data))
 	}
 }
 
 func demonstrateSubscriptions(store memory.EventStoreConsumer) {
-	streamID := "user-789"
+	streamID1 := "user-789"
+	streamID2 := "user-890"
 
-	// Create a subscription starting from the beginning
-	fmt.Printf("Creating subscription to stream '%s'...\n", streamID)
-	subscription, err := store.Subscribe(streamID, eventstore.ConsumeOptions{
-		FromVersion: 0,
-		BatchSize:   10,
+	// Create a subscription starting from the beginning (all streams)
+	fmt.Println("Creating subscription to all streams...")
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create subscription: %v", err)
@@ -145,7 +175,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 			select {
 			case event := <-subscription.Events():
 				eventCount++
-				fmt.Printf("  📧 Received event: %s (Version %d)\n", event.Type, event.Version)
+				fmt.Printf("  📧 Received event: %s (Version %d, Timestamp %s)\n", event.Type, event.Version, event.Timestamp.Format(time.RFC3339))
 				fmt.Printf("     Data: %s\n", string(event.Data))
 			case err := <-subscription.Errors():
 				fmt.Printf("  ❌ Subscription error: %v\n", err)
@@ -154,10 +184,10 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		}
 	}()
 
-	// Add some events after subscription is created
-	fmt.Println("Adding events to the stream...")
+	// Add some events to different streams after subscription is created
+	fmt.Println("Adding events to multiple streams...")
 
-	userCreatedData, _ := json.Marshal(UserCreated{
+	userCreatedData1, _ := json.Marshal(UserCreated{
 		UserID: "user-789",
 		Name:   "Alice Smith",
 		Email:  "alice@example.com",
@@ -166,29 +196,53 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 	events1 := []eventstore.Event{
 		{
 			Type: "UserCreated",
-			Data: userCreatedData,
+			Data: userCreatedData1,
 			Metadata: map[string]string{
 				"source": "user-service",
 			},
 		},
 	}
 
-	err = store.Append(streamID, events1, -1)
+	err = store.Append(streamID1, events1, -1)
 	if err != nil {
-		log.Fatalf("Failed to append events: %v", err)
+		log.Fatalf("Failed to append events to stream 1: %v", err)
 	}
 
 	// Wait a bit for the event to be processed
 	time.Sleep(100 * time.Millisecond)
 
-	// Add another event
+	// Add event to another stream
+	userCreatedData2, _ := json.Marshal(UserCreated{
+		UserID: "user-890",
+		Name:   "Bob Johnson",
+		Email:  "bob@example.com",
+	})
+
+	events2 := []eventstore.Event{
+		{
+			Type: "UserCreated",
+			Data: userCreatedData2,
+			Metadata: map[string]string{
+				"source": "user-service",
+			},
+		},
+	}
+
+	err = store.Append(streamID2, events2, -1)
+	if err != nil {
+		log.Fatalf("Failed to append events to stream 2: %v", err)
+	}
+
+	// Wait a bit and add another event
+	time.Sleep(100 * time.Millisecond)
+
 	userEmailChangedData, _ := json.Marshal(UserEmailChanged{
 		UserID:   "user-789",
 		NewEmail: "alice.smith@example.com",
 		OldEmail: "alice@example.com",
 	})
 
-	events2 := []eventstore.Event{
+	events3 := []eventstore.Event{
 		{
 			Type: "UserEmailChanged",
 			Data: userEmailChangedData,
@@ -198,21 +252,23 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID, events2, -1)
+	err = store.Append(streamID1, events3, -1)
 	if err != nil {
-		log.Fatalf("Failed to append second event: %v", err)
+		log.Fatalf("Failed to append third event: %v", err)
 	}
 
 	// Wait for events to be processed
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	fmt.Printf("✅ Subscription processed %d events\n", eventCount)
 
-	// Demonstrate subscription from a specific version
-	fmt.Println("\nCreating subscription from version 1...")
-	subscription2, err := store.Subscribe(streamID, eventstore.ConsumeOptions{
-		FromVersion: 1, // Start from version 1, should only get the second event
-		BatchSize:   10,
+	// Demonstrate subscription from a specific timestamp
+	fmt.Println("\nCreating subscription from a specific timestamp...")
+	startTime := time.Now()
+	
+	subscription2, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: startTime, // Start from now, should only get new events
+		BatchSize:     10,
 	})
 	if err != nil {
 		log.Fatalf("Failed to create second subscription: %v", err)
@@ -224,7 +280,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		for {
 			select {
 			case event := <-subscription2.Events():
-				fmt.Printf("  📧 Second subscription received: %s (Version %d)\n", event.Type, event.Version)
+				fmt.Printf("  📧 Second subscription received: %s (Version %d, Timestamp %s)\n", event.Type, event.Version, event.Timestamp.Format(time.RFC3339))
 			case err := <-subscription2.Errors():
 				fmt.Printf("  ❌ Second subscription error: %v\n", err)
 				return
@@ -232,8 +288,32 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		}
 	}()
 
-	// Wait for the subscription to process existing events
+	// Add a new event after the second subscription
 	time.Sleep(100 * time.Millisecond)
+	
+	finalEventData, _ := json.Marshal(UserEmailChanged{
+		UserID:   "user-890",
+		NewEmail: "bob.johnson@example.com",
+		OldEmail: "bob@example.com",
+	})
+
+	finalEvents := []eventstore.Event{
+		{
+			Type: "UserEmailChanged",
+			Data: finalEventData,
+			Metadata: map[string]string{
+				"source": "user-service",
+			},
+		},
+	}
+
+	err = store.Append(streamID2, finalEvents, -1)
+	if err != nil {
+		log.Fatalf("Failed to append final event: %v", err)
+	}
+
+	// Wait for the subscription to process new events
+	time.Sleep(200 * time.Millisecond)
 
 	fmt.Println("✅ Both subscriptions are working correctly")
 }

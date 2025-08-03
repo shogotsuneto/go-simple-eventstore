@@ -143,3 +143,62 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 
 	return events, nil
 }
+
+// loadAllEvents retrieves events from all streams using timestamp-based filtering.
+// This is used by the consumer interface.
+func (p *pgClient) loadAllEvents(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+	query := fmt.Sprintf(`
+		SELECT event_id, event_type, event_data, metadata, timestamp, version
+		FROM %s
+		WHERE timestamp >= $1
+		ORDER BY timestamp ASC
+	`, quoteIdentifier(p.tableName))
+
+	args := []interface{}{opts.FromTimestamp}
+
+	if opts.BatchSize > 0 {
+		query += " LIMIT $2"
+		args = append(args, opts.BatchSize)
+	}
+
+	rows, err := p.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []eventstore.Event
+
+	for rows.Next() {
+		var event eventstore.Event
+		var metadataJSON []byte
+
+		err := rows.Scan(
+			&event.ID,
+			&event.Type,
+			&event.Data,
+			&metadataJSON,
+			&event.Timestamp,
+			&event.Version,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+
+		// Unmarshal metadata from JSON
+		if metadataJSON != nil {
+			err = json.Unmarshal(metadataJSON, &event.Metadata)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
+		}
+
+		events = append(events, event)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return events, nil
+}

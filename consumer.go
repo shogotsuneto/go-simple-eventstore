@@ -1,10 +1,12 @@
 // Package eventstore provides consumer interfaces for event consumption.
 package eventstore
 
-// ConsumeOptions contains options for consuming events from a stream.
+import "time"
+
+// ConsumeOptions contains options for consuming events from a table.
 type ConsumeOptions struct {
-	// FromVersion specifies where to start consuming events from
-	FromVersion int64
+	// FromTimestamp specifies where to start consuming events from
+	FromTimestamp time.Time
 	// BatchSize specifies the maximum number of events to return in each batch
 	BatchSize int
 }
@@ -19,11 +21,11 @@ type EventSubscription interface {
 	Close() error
 }
 
-// EventConsumer defines the interface for consuming events from streams.
+// EventConsumer defines the interface for consuming events from all streams in a table.
 type EventConsumer interface {
-	// Retrieve retrieves events from a stream in a retrieval operation
-	Retrieve(streamID string, opts ConsumeOptions) ([]Event, error)
-	// Subscribe creates a subscription to a stream for continuous event consumption
-	Subscribe(streamID string, opts ConsumeOptions) (EventSubscription, error)
+	// Retrieve retrieves events from all streams in a retrieval operation
+	Retrieve(opts ConsumeOptions) ([]Event, error)
+	// Subscribe creates a subscription to all streams for continuous event consumption
+	Subscribe(opts ConsumeOptions) (EventSubscription, error)
 }
 

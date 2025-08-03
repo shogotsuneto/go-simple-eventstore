@@ -15,7 +15,7 @@ func TestPostgresEventConsumer_Retrieve_InvalidConnection(t *testing.T) {
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions:   make(map[string][]*PostgresSubscription),
+		subscriptions:   []*PostgresSubscription{}, // Updated to slice
 		pollingInterval: 1 * time.Second,
 	}
 
@@ -35,13 +35,13 @@ func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions:   make(map[string][]*PostgresSubscription),
+		subscriptions:   []*PostgresSubscription{}, // Updated to slice
 		pollingInterval: 2 * time.Second,
 	}
 
-	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
-		FromVersion: 0,
-		BatchSize:   10,
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // Updated to use FromTimestamp
+		BatchSize:     10,
 	})
 
 	// Subscribe should succeed initially (it starts asynchronously)
@@ -67,14 +67,14 @@ func TestPostgresEventConsumer_Subscribe_ConfigurablePollingInterval(t *testing.
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions:   make(map[string][]*PostgresSubscription),
+		subscriptions:   []*PostgresSubscription{}, // Updated to slice
 		pollingInterval: customInterval,
 	}
 
 	// Test subscription creation
-	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
-		FromVersion: 0,
-		BatchSize:   10,
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // Updated to use FromTimestamp
+		BatchSize:     10,
 	})
 
 	// Subscribe should succeed initially (it starts asynchronously)
@@ -109,14 +109,14 @@ func TestPostgresEventConsumer_Subscribe_DefaultPollingInterval(t *testing.T) {
 			db:        nil, // This will cause an error when actually used
 			tableName: "events",
 		},
-		subscriptions:   make(map[string][]*PostgresSubscription),
-		pollingInterval: 1 * time.Second, // Default interval
+		subscriptions:   []*PostgresSubscription{}, // Updated to slice
+		pollingInterval: 1 * time.Second,           // Default interval
 	}
 
 	// Test subscription creation
-	subscription, err := store.Subscribe("test-stream", eventstore.ConsumeOptions{
-		FromVersion: 0,
-		BatchSize:   10,
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // Updated to use FromTimestamp
+		BatchSize:     10,
 	})
 
 	// Subscribe should succeed initially (it starts asynchronously)
@@ -169,9 +169,8 @@ func TestPostgresSubscription_Close(t *testing.T) {
 		errorsCh: make(chan error),
 		closeCh:  make(chan struct{}),
 		store: &PostgresEventConsumer{
-			subscriptions: make(map[string][]*PostgresSubscription),
+			subscriptions: []*PostgresSubscription{}, // Updated to slice
 		},
-		streamID: "test-stream",
 	}
 
 	// First close should succeed

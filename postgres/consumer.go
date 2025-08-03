@@ -12,7 +12,7 @@ import (
 // PostgresEventConsumer provides consumer capabilities using PostgreSQL.
 type PostgresEventConsumer struct {
 	*pgClient
-	subscriptions   map[string][]*PostgresSubscription
+	subscriptions   []*PostgresSubscription // Changed to a single slice since we don't use streamID
 	subsMu          sync.RWMutex
 	pollingInterval time.Duration
 }
@@ -32,28 +32,23 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time
 			db:        db,
 			tableName: tableName,
 		},
-		subscriptions:   make(map[string][]*PostgresSubscription),
+		subscriptions:   []*PostgresSubscription{}, // Changed to a single slice
 		pollingInterval: pollingInterval,
 	}
 }
 
-// Retrieve retrieves events from a stream in a retrieval operation.
-func (s *PostgresEventConsumer) Retrieve(streamID string, opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	loadOpts := eventstore.LoadOptions{
-		FromVersion: opts.FromVersion,
-		Limit:       opts.BatchSize,
-	}
-	return s.loadEvents(streamID, loadOpts)
+// Retrieve retrieves events from all streams in a retrieval operation.
+func (s *PostgresEventConsumer) Retrieve(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+	return s.loadAllEvents(opts)
 }
 
-// Subscribe creates a subscription to a stream for continuous event consumption.
-func (s *PostgresEventConsumer) Subscribe(streamID string, opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
+// Subscribe creates a subscription to all streams for continuous event consumption.
+func (s *PostgresEventConsumer) Subscribe(opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
 	sub := &PostgresSubscription{
-		streamID:        streamID,
-		fromVersion:     opts.FromVersion,
+		fromTimestamp:   opts.FromTimestamp,
 		batchSize:       opts.BatchSize,
 		pollingInterval: s.pollingInterval,
 		eventsCh:        make(chan eventstore.Event, 100), // Buffered channel
@@ -64,7 +59,7 @@ func (s *PostgresEventConsumer) Subscribe(streamID string, opts eventstore.Consu
 	}
 
 	// Add subscription to the list
-	s.subscriptions[streamID] = append(s.subscriptions[streamID], sub)
+	s.subscriptions = append(s.subscriptions, sub)
 
 	// Start subscription goroutine
 	go sub.start()
@@ -73,29 +68,22 @@ func (s *PostgresEventConsumer) Subscribe(streamID string, opts eventstore.Consu
 }
 
 // removeSubscription removes a subscription from the store.
-func (s *PostgresEventConsumer) removeSubscription(streamID string, sub *PostgresSubscription) {
+func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
-	subs := s.subscriptions[streamID]
-	for i, existing := range subs {
+	for i, existing := range s.subscriptions {
 		if existing == sub {
 			// Remove subscription from slice
-			s.subscriptions[streamID] = append(subs[:i], subs[i+1:]...)
+			s.subscriptions = append(s.subscriptions[:i], s.subscriptions[i+1:]...)
 			break
 		}
 	}
-
-	// Clean up empty subscription lists
-	if len(s.subscriptions[streamID]) == 0 {
-		delete(s.subscriptions, streamID)
-	}
 }
 
-// PostgresSubscription represents an active subscription to a stream in PostgreSQL.
+// PostgresSubscription represents an active subscription to all streams in PostgreSQL.
 type PostgresSubscription struct {
-	streamID        string
-	fromVersion     int64
+	fromTimestamp   time.Time
 	batchSize       int
 	pollingInterval time.Duration
 	eventsCh        chan eventstore.Event
@@ -132,7 +120,7 @@ func (s *PostgresSubscription) Close() error {
 		s.cancel()
 	}
 	close(s.closeCh)
-	s.store.removeSubscription(s.streamID, s)
+	s.store.removeSubscription(s)
 
 	return nil
 }
@@ -172,9 +160,9 @@ func (s *PostgresSubscription) loadInitialEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	events, err := s.store.loadEvents(s.streamID, eventstore.LoadOptions{
-		FromVersion: s.fromVersion,
-		Limit:       batchSize,
+	events, err := s.store.loadAllEvents(eventstore.ConsumeOptions{
+		FromTimestamp: s.fromTimestamp,
+		BatchSize:     batchSize,
 	})
 	if err != nil {
 		select {
@@ -188,7 +176,7 @@ func (s *PostgresSubscription) loadInitialEvents() {
 	for _, event := range events {
 		select {
 		case s.eventsCh <- event:
-			s.fromVersion = event.Version
+			s.fromTimestamp = event.Timestamp
 		case <-s.closeCh:
 			return
 		}
@@ -207,9 +195,9 @@ func (s *PostgresSubscription) pollForEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	events, err := s.store.loadEvents(s.streamID, eventstore.LoadOptions{
-		FromVersion: s.fromVersion,
-		Limit:       batchSize,
+	events, err := s.store.loadAllEvents(eventstore.ConsumeOptions{
+		FromTimestamp: s.fromTimestamp,
+		BatchSize:     batchSize,
 	})
 	if err != nil {
 		select {
@@ -222,7 +210,7 @@ func (s *PostgresSubscription) pollForEvents() {
 	for _, event := range events {
 		select {
 		case s.eventsCh <- event:
-			s.fromVersion = event.Version
+			s.fromTimestamp = event.Timestamp
 		case <-s.closeCh:
 			return
 		}
