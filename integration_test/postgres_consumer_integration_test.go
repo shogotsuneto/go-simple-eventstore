@@ -553,3 +553,116 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 		}
 	}
 }
+
+// TestPostgresEventConsumer_Integration_NoDuplicateEvents tests that subscriptions don't receive duplicate events
+// when using timestamp-based filtering followed by ID-based polling.
+func TestPostgresEventConsumer_Integration_NoDuplicateEvents(t *testing.T) {
+	consumer, store, db := setupTestConsumer(t)
+	defer db.Close()
+
+	// Create events with very close timestamps to test duplicate handling
+	baseTime := time.Now().UTC().Truncate(time.Millisecond)
+	
+	events := []eventstore.Event{
+		{
+			ID:        "event-1",
+			Type:      "TestEvent",
+			Data:      []byte(`{"message": "Event 1"}`),
+			Timestamp: baseTime,
+		},
+		{
+			ID:        "event-2",
+			Type:      "TestEvent",
+			Data:      []byte(`{"message": "Event 2"}`),
+			Timestamp: baseTime, // Same timestamp as event-1
+		},
+		{
+			ID:        "event-3",
+			Type:      "TestEvent",
+			Data:      []byte(`{"message": "Event 3"}`),
+			Timestamp: baseTime.Add(1 * time.Millisecond),
+		},
+	}
+
+	// Add events to store
+	err := store.Append("test-stream-1", events[:2], -1)
+	if err != nil {
+		t.Fatalf("Failed to append first batch of events: %v", err)
+	}
+
+	// Subscribe from beginning
+	subscription, err := consumer.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: baseTime,
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	defer subscription.Close()
+
+	// Collect initial events
+	var receivedEvents []eventstore.Event
+	timeout := time.After(2 * time.Second)
+
+	// Wait for initial events
+	for len(receivedEvents) < 2 {
+		select {
+		case event := <-subscription.Events():
+			receivedEvents = append(receivedEvents, event)
+		case err := <-subscription.Errors():
+			t.Fatalf("Subscription error: %v", err)
+		case <-timeout:
+			t.Fatalf("Timeout waiting for initial events, got %d events", len(receivedEvents))
+		}
+	}
+
+	// Add third event after subscription is active
+	err = store.Append("test-stream-2", events[2:3], -1)
+	if err != nil {
+		t.Fatalf("Failed to append third event: %v", err)
+	}
+
+	// Wait for the third event to be delivered
+	timeout = time.After(3 * time.Second)
+	for len(receivedEvents) < 3 {
+		select {
+		case event := <-subscription.Events():
+			receivedEvents = append(receivedEvents, event)
+		case err := <-subscription.Errors():
+			t.Fatalf("Subscription error: %v", err)
+		case <-timeout:
+			t.Fatalf("Timeout waiting for third event, got %d events", len(receivedEvents))
+		}
+	}
+
+	// Check for no additional duplicate events
+	timeout = time.After(1 * time.Second)
+	select {
+	case event := <-subscription.Events():
+		t.Errorf("Received unexpected duplicate event: %+v", event)
+	case err := <-subscription.Errors():
+		t.Fatalf("Subscription error: %v", err)
+	case <-timeout:
+		// This is expected - no more events should arrive
+	}
+
+	// Verify we received exactly 3 events with correct IDs
+	if len(receivedEvents) != 3 {
+		t.Errorf("Expected exactly 3 events, got %d", len(receivedEvents))
+	}
+
+	expectedIDs := []string{"event-1", "event-2", "event-3"}
+	for i, event := range receivedEvents {
+		if i < len(expectedIDs) && event.ID != expectedIDs[i] {
+			t.Errorf("Event %d: expected ID %s, got %s", i, expectedIDs[i], event.ID)
+		}
+	}
+
+	// Verify events are ordered correctly
+	for i := 1; i < len(receivedEvents); i++ {
+		if receivedEvents[i].Timestamp.Before(receivedEvents[i-1].Timestamp) {
+			t.Errorf("Events not ordered by timestamp: event %d (%v) before event %d (%v)",
+				i, receivedEvents[i].Timestamp, i-1, receivedEvents[i-1].Timestamp)
+		}
+	}
+}

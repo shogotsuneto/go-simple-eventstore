@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"sync"
 	"time"
 
@@ -39,7 +40,25 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time
 
 // Retrieve retrieves events from all streams in a retrieval operation.
 func (s *PostgresEventConsumer) Retrieve(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	return s.loadAllEvents(opts)
+	events, err := s.loadEventsByTimestamp(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Remove internal metadata from events before returning
+	for i := range events {
+		if events[i].Metadata != nil {
+			cleanMetadata := make(map[string]string)
+			for k, v := range events[i].Metadata {
+				if k != "_db_id" {
+					cleanMetadata[k] = v
+				}
+			}
+			events[i].Metadata = cleanMetadata
+		}
+	}
+
+	return events, nil
 }
 
 // Subscribe creates a subscription to all streams for continuous event consumption.
@@ -49,6 +68,7 @@ func (s *PostgresEventConsumer) Subscribe(opts eventstore.ConsumeOptions) (event
 
 	sub := &PostgresSubscription{
 		fromTimestamp:   opts.FromTimestamp,
+		lastEventID:     0, // Initialize to 0, will be updated after first fetch
 		batchSize:       opts.BatchSize,
 		pollingInterval: s.pollingInterval,
 		eventsCh:        make(chan eventstore.Event, 100), // Buffered channel
@@ -84,6 +104,7 @@ func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 // PostgresSubscription represents an active subscription to all streams in PostgreSQL.
 type PostgresSubscription struct {
 	fromTimestamp   time.Time
+	lastEventID     int64 // Track last processed event ID to avoid duplicates in polling
 	batchSize       int
 	pollingInterval time.Duration
 	eventsCh        chan eventstore.Event
@@ -150,7 +171,7 @@ func (s *PostgresSubscription) start() {
 	}
 }
 
-// loadInitialEvents loads any existing events that match our criteria.
+// loadInitialEvents loads any existing events that match our criteria using timestamp-based filtering.
 func (s *PostgresSubscription) loadInitialEvents() {
 	// Safety check - don't try to load if store or db is nil
 	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
@@ -163,7 +184,8 @@ func (s *PostgresSubscription) loadInitialEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	events, err := s.store.loadAllEvents(eventstore.ConsumeOptions{
+	// Use timestamp-based filtering for initial load
+	events, err := s.store.loadEventsByTimestamp(eventstore.ConsumeOptions{
 		FromTimestamp: s.fromTimestamp,
 		BatchSize:     batchSize,
 	})
@@ -179,10 +201,32 @@ func (s *PostgresSubscription) loadInitialEvents() {
 	}
 
 	for _, event := range events {
+		// Extract database ID before sending event to channel
+		var dbID int64
+		if eventIDStr, ok := event.Metadata["_db_id"]; ok {
+			if parsed, err := strconv.ParseInt(eventIDStr, 10, 64); err == nil {
+				dbID = parsed
+			}
+		}
+
+		// Remove internal metadata before sending to channel
+		eventCopy := event
+		if eventCopy.Metadata != nil {
+			eventCopy.Metadata = make(map[string]string)
+			for k, v := range event.Metadata {
+				if k != "_db_id" {
+					eventCopy.Metadata[k] = v
+				}
+			}
+		}
+
 		select {
-		case s.eventsCh <- event:
+		case s.eventsCh <- eventCopy:
 			s.mu.Lock()
 			s.fromTimestamp = event.Timestamp
+			if dbID > 0 {
+				s.lastEventID = dbID
+			}
 			s.mu.Unlock()
 		case <-s.closeCh:
 			return
@@ -190,7 +234,7 @@ func (s *PostgresSubscription) loadInitialEvents() {
 	}
 }
 
-// pollForEvents polls the database for new events.
+// pollForEvents polls the database for new events using ID-based filtering to avoid duplicates.
 func (s *PostgresSubscription) pollForEvents() {
 	// Safety check - don't try to poll if store or db is nil
 	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
@@ -203,10 +247,8 @@ func (s *PostgresSubscription) pollForEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	events, err := s.store.loadAllEvents(eventstore.ConsumeOptions{
-		FromTimestamp: s.fromTimestamp,
-		BatchSize:     batchSize,
-	})
+	// Use ID-based filtering for polling to avoid duplicates
+	events, err := s.store.loadEventsByID(s.lastEventID, batchSize)
 	s.mu.Unlock()
 
 	if err != nil {
@@ -218,10 +260,32 @@ func (s *PostgresSubscription) pollForEvents() {
 	}
 
 	for _, event := range events {
+		// Extract database ID before sending event to channel
+		var dbID int64
+		if eventIDStr, ok := event.Metadata["_db_id"]; ok {
+			if parsed, err := strconv.ParseInt(eventIDStr, 10, 64); err == nil {
+				dbID = parsed
+			}
+		}
+
+		// Remove internal metadata before sending to channel
+		eventCopy := event
+		if eventCopy.Metadata != nil {
+			eventCopy.Metadata = make(map[string]string)
+			for k, v := range event.Metadata {
+				if k != "_db_id" {
+					eventCopy.Metadata[k] = v
+				}
+			}
+		}
+
 		select {
-		case s.eventsCh <- event:
+		case s.eventsCh <- eventCopy:
 			s.mu.Lock()
 			s.fromTimestamp = event.Timestamp
+			if dbID > 0 {
+				s.lastEventID = dbID
+			}
 			s.mu.Unlock()
 		case <-s.closeCh:
 			return

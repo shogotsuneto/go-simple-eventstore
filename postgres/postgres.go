@@ -147,13 +147,19 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 }
 
 // loadAllEvents retrieves events from all streams using timestamp-based filtering.
-// This is used by the consumer interface.
+// This is used by the consumer interface for backward compatibility.
 func (p *pgClient) loadAllEvents(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
+	return p.loadEventsByTimestamp(opts)
+}
+
+// loadEventsByTimestamp retrieves events from all streams using timestamp-based filtering.
+// This is used for initial loads and Retrieve operations.
+func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
 	query := fmt.Sprintf(`
-		SELECT event_id, event_type, event_data, metadata, timestamp, version
+		SELECT id, event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s
 		WHERE timestamp >= $1
-		ORDER BY timestamp ASC
+		ORDER BY timestamp ASC, id ASC
 	`, quoteIdentifier(p.tableName))
 
 	args := []interface{}{opts.FromTimestamp}
@@ -174,8 +180,10 @@ func (p *pgClient) loadAllEvents(opts eventstore.ConsumeOptions) ([]eventstore.E
 	for rows.Next() {
 		var event eventstore.Event
 		var metadataJSON []byte
+		var dbID int64
 
 		err := rows.Scan(
+			&dbID,
 			&event.ID,
 			&event.Type,
 			&event.Data,
@@ -194,6 +202,83 @@ func (p *pgClient) loadAllEvents(opts eventstore.ConsumeOptions) ([]eventstore.E
 				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
 			}
 		}
+
+		// Initialize metadata if nil
+		if event.Metadata == nil {
+			event.Metadata = make(map[string]string)
+		}
+
+		// Store database ID in metadata for tracking (internal use)
+		event.Metadata["_db_id"] = fmt.Sprintf("%d", dbID)
+
+		events = append(events, event)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return events, nil
+}
+
+// loadEventsByID retrieves events from all streams using ID-based filtering.
+// This is used for polling operations to avoid duplicates.
+func (p *pgClient) loadEventsByID(afterID int64, batchSize int) ([]eventstore.Event, error) {
+	query := fmt.Sprintf(`
+		SELECT id, event_id, event_type, event_data, metadata, timestamp, version
+		FROM %s
+		WHERE id > $1
+		ORDER BY id ASC
+	`, quoteIdentifier(p.tableName))
+
+	args := []interface{}{afterID}
+
+	if batchSize > 0 {
+		query += " LIMIT $2"
+		args = append(args, batchSize)
+	}
+
+	rows, err := p.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events by ID: %w", err)
+	}
+	defer rows.Close()
+
+	var events []eventstore.Event
+
+	for rows.Next() {
+		var event eventstore.Event
+		var metadataJSON []byte
+		var dbID int64
+
+		err := rows.Scan(
+			&dbID,
+			&event.ID,
+			&event.Type,
+			&event.Data,
+			&metadataJSON,
+			&event.Timestamp,
+			&event.Version,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+
+		// Unmarshal metadata from JSON
+		if metadataJSON != nil {
+			err = json.Unmarshal(metadataJSON, &event.Metadata)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
+		}
+
+		// Initialize metadata if nil
+		if event.Metadata == nil {
+			event.Metadata = make(map[string]string)
+		}
+
+		// Store database ID in metadata for tracking (internal use)
+		event.Metadata["_db_id"] = fmt.Sprintf("%d", dbID)
 
 		events = append(events, event)
 	}
