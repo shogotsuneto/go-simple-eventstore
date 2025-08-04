@@ -17,22 +17,31 @@ type EventStoreConsumer interface {
 
 // InMemoryEventStore is a simple in-memory implementation of both EventStore and EventConsumer.
 // This implementation is suitable for testing and demonstration purposes.
+//
+// Note on delivery guarantees: When using timestamp-based filtering, this implementation
+// does not guarantee exactly-once delivery. Events with identical timestamps may be
+// delivered multiple times to subscriptions. This is acceptable as the implementation
+// relies on timestamp precision for event ordering and filtering.
 type InMemoryEventStore struct {
-	mu            sync.RWMutex
-	streams       map[string][]eventstore.Event
-	subscriptions map[string][]*InMemorySubscription
-	subsMu        sync.RWMutex
+	mu          sync.RWMutex
+	streams     map[string][]eventstore.Event
+	timeline    []eventstore.Event      // Central chronological event timeline
+	subscribers []*InMemorySubscription // Global list of active subscriptions
+	subsMu      sync.RWMutex
+	newEventCh  chan struct{} // Channel to notify subscribers of new events
 }
 
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
 func NewInMemoryEventStore() EventStoreConsumer {
 	return &InMemoryEventStore{
-		streams:       make(map[string][]eventstore.Event),
-		subscriptions: make(map[string][]*InMemorySubscription),
+		streams:     make(map[string][]eventstore.Event),
+		timeline:    make([]eventstore.Event, 0),
+		subscribers: make([]*InMemorySubscription, 0),
+		newEventCh:  make(chan struct{}, 100), // Buffered to prevent blocking
 	}
 }
 
-// Append adds new events to the given stream and notifies subscriptions.
+// Append adds new events to the given stream and publishes them to the central timeline.
 func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
 	if len(events) == 0 {
 		return nil
@@ -76,10 +85,29 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	// Append events to stream
 	s.streams[streamID] = append(stream, events...)
 
-	// Notify subscriptions about new events
-	s.notifySubscriptions(streamID, events)
+	// Add events to central timeline and notify subscribers
+	s.addEventsToTimeline(events)
+	s.notifyNewEvents()
 
 	return nil
+}
+
+// addEventsToTimeline adds events to the central timeline maintaining chronological order.
+// This method must be called while holding the main mutex.
+func (s *InMemoryEventStore) addEventsToTimeline(events []eventstore.Event) {
+	for _, event := range events {
+		s.insertEventInTimeline(event)
+	}
+}
+
+// notifyNewEvents notifies all subscribers that new events are available.
+func (s *InMemoryEventStore) notifyNewEvents() {
+	// Non-blocking notification
+	select {
+	case s.newEventCh <- struct{}{}:
+	default:
+		// Channel is full, skip (subscribers will eventually catch up)
+	}
 }
 
 // Load retrieves events for the given stream using the specified options.
@@ -113,23 +141,10 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 
 	var result []eventstore.Event
 
-	// Collect events from all streams
-	for _, stream := range s.streams {
-		for _, event := range stream {
-			// Filter by timestamp
-			if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
-				result = append(result, event)
-			}
-		}
-	}
-
-	// Sort events by timestamp (to maintain order across streams)
-	// Simple bubble sort for now (could be optimized later)
-	for i := 0; i < len(result); i++ {
-		for j := i + 1; j < len(result); j++ {
-			if result[i].Timestamp.After(result[j].Timestamp) {
-				result[i], result[j] = result[j], result[i]
-			}
+	// Filter events from timeline by timestamp
+	for _, event := range s.timeline {
+		if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
+			result = append(result, event)
 		}
 	}
 
@@ -152,12 +167,12 @@ func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventsto
 		eventsCh:      make(chan eventstore.Event, 100), // Buffered channel
 		errorsCh:      make(chan error, 10),
 		closeCh:       make(chan struct{}),
-		notifyCh:      make(chan []eventstore.Event, 50), // Buffered channel for notifications
 		store:         s,
+		cursor:        0, // Start from beginning of timeline
 	}
 
-	// Add subscription to a global list (using empty string as key for all streams)
-	s.subscriptions[""] = append(s.subscriptions[""], sub)
+	// Add subscription to global list
+	s.subscribers = append(s.subscribers, sub)
 
 	// Start subscription goroutine
 	go sub.start()
@@ -165,27 +180,19 @@ func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventsto
 	return sub, nil
 }
 
-// notifySubscriptions notifies all subscriptions for all streams about new events.
-func (s *InMemoryEventStore) notifySubscriptions(streamID string, events []eventstore.Event) {
-	s.subsMu.RLock()
-	// Get global subscriptions (using empty string as key for all streams)
-	subs, exists := s.subscriptions[""]
-	if !exists {
-		s.subsMu.RUnlock()
-		return
-	}
-	s.subsMu.RUnlock()
-
-	for _, sub := range subs {
-		select {
-		case sub.notifyCh <- events:
-			// Successfully sent notification
-		case <-sub.closeCh:
-			// Subscription is closed, skip
-			continue
-		default:
-			// Notification channel is full, skip (could also send error)
-			continue
+// insertEventInTimeline inserts an event into the timeline maintaining chronological order.
+// This method must be called while holding the main mutex.
+func (s *InMemoryEventStore) insertEventInTimeline(event eventstore.Event) {
+	// For simplicity, we'll append and then sort if needed
+	// In a real implementation, you might use a more efficient insertion
+	s.timeline = append(s.timeline, event)
+	
+	// Simple insertion sort to maintain chronological order
+	for i := len(s.timeline) - 1; i > 0; i-- {
+		if s.timeline[i].Timestamp.Before(s.timeline[i-1].Timestamp) {
+			s.timeline[i], s.timeline[i-1] = s.timeline[i-1], s.timeline[i]
+		} else {
+			break
 		}
 	}
 }
@@ -195,19 +202,13 @@ func (s *InMemoryEventStore) removeSubscription(sub *InMemorySubscription) {
 	s.subsMu.Lock()
 	defer s.subsMu.Unlock()
 
-	// Remove from global subscriptions (using empty string as key for all streams)
-	subs := s.subscriptions[""]
-	for i, existing := range subs {
+	// Remove subscription from global list
+	for i, existing := range s.subscribers {
 		if existing == sub {
 			// Remove subscription from slice
-			s.subscriptions[""] = append(subs[:i], subs[i+1:]...)
+			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
 			break
 		}
-	}
-
-	// Clean up empty subscription lists
-	if len(s.subscriptions[""]) == 0 {
-		delete(s.subscriptions, "")
 	}
 }
 
@@ -218,8 +219,8 @@ type InMemorySubscription struct {
 	eventsCh      chan eventstore.Event
 	errorsCh      chan error
 	closeCh       chan struct{}
-	notifyCh      chan []eventstore.Event // Channel for buffering new event notifications
 	store         *InMemoryEventStore
+	cursor        int  // Current position in the timeline
 	closed        bool
 	mu            sync.Mutex
 }
@@ -250,62 +251,74 @@ func (s *InMemorySubscription) Close() error {
 	return nil
 }
 
-// start begins the subscription lifecycle.
+// start begins the subscription lifecycle using cursor-based timeline reading.
+// This method processes both existing and new events from the single timeline source.
 func (s *InMemorySubscription) start() {
-	// Load existing events from all streams that match our criteria
-	s.store.mu.RLock()
-	var allEvents []eventstore.Event
-	for _, stream := range s.store.streams {
-		for _, event := range stream {
-			if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) {
-				allEvents = append(allEvents, event)
-			}
-		}
-	}
-	s.store.mu.RUnlock()
-
-	// Sort events by timestamp to maintain order across streams
-	for i := 0; i < len(allEvents); i++ {
-		for j := i + 1; j < len(allEvents); j++ {
-			if allEvents[i].Timestamp.After(allEvents[j].Timestamp) {
-				allEvents[i], allEvents[j] = allEvents[j], allEvents[i]
-			}
-		}
-	}
-
-	// Send initial batch of events
-	count := 0
-	for _, event := range allEvents {
-		select {
-		case s.eventsCh <- event:
-			s.fromTimestamp = event.Timestamp
-			count++
-			if s.batchSize > 0 && count >= s.batchSize {
-				break // Limit initial batch if specified
-			}
-		case <-s.closeCh:
-			return
-		}
-	}
-
-	// Handle ongoing notifications
+	// Process events continuously
 	for {
 		select {
-		case events := <-s.notifyCh:
-			// Process new events from notification
-			for _, event := range events {
-				// Filter by timestamp instead of version
-				if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) {
-					select {
-					case s.eventsCh <- event:
-						s.fromTimestamp = event.Timestamp // Update the subscription's position
-					case <-s.closeCh:
-						return
-					}
-				}
-			}
 		case <-s.closeCh:
 			return
+		case <-s.store.newEventCh:
+			// New events might be available, check timeline
+			s.processTimelineEvents()
+		default:
+			// Process any existing events on startup
+			if s.processTimelineEvents() == 0 {
+				// No events processed, wait for notification
+				select {
+				case <-s.closeCh:
+					return
+				case <-s.store.newEventCh:
+					// New events available, continue loop
+				}
+			}
 		}
 	}
+}
+
+// processTimelineEvents processes events from the timeline starting from the current cursor.
+// Returns the number of events processed.
+func (s *InMemorySubscription) processTimelineEvents() int {
+	s.store.mu.RLock()
+	timeline := s.store.timeline
+	s.store.mu.RUnlock()
+
+	processed := 0
+	s.mu.Lock()
+	currentCursor := s.cursor
+	s.mu.Unlock()
+
+	for i := currentCursor; i < len(timeline); i++ {
+		event := timeline[i]
+		
+		// Filter by timestamp - allow events with same timestamp or after
+		if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
+			select {
+			case s.eventsCh <- event:
+				s.mu.Lock()
+				s.cursor = i + 1
+				s.fromTimestamp = event.Timestamp
+				s.mu.Unlock()
+				processed++
+				
+				// Check batch size limit
+				if s.batchSize > 0 && processed >= s.batchSize {
+					break
+				}
+			case <-s.closeCh:
+				return processed
+			default:
+				// Channel is full, stop processing for now
+				return processed
+			}
+		} else {
+			// Update cursor even for filtered events
+			s.mu.Lock()
+			s.cursor = i + 1
+			s.mu.Unlock()
+		}
+	}
+	
+	return processed
 }

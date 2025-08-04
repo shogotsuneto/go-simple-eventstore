@@ -680,7 +680,7 @@ func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
 	// Verify subscription is removed from store (access internal fields for testing)
 	concreteStore := store.(*InMemoryEventStore)
 	concreteStore.subsMu.RLock()
-	subs := concreteStore.subscriptions[""] // All subscriptions are stored under empty string now
+	subs := concreteStore.subscribers
 	concreteStore.subsMu.RUnlock()
 
 	if len(subs) != 0 {
@@ -703,7 +703,7 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 	// Verify subscription was created
 	concreteStore := store.(*InMemoryEventStore)
 	concreteStore.subsMu.RLock()
-	subs := concreteStore.subscriptions[""] // All subscriptions are stored under empty string now
+	subs := concreteStore.subscribers
 	concreteStore.subsMu.RUnlock()
 
 	if len(subs) != 1 {
@@ -715,7 +715,7 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 
 	// Verify all subscriptions were closed
 	concreteStore.subsMu.RLock()
-	totalSubs := len(concreteStore.subscriptions)
+	totalSubs := len(concreteStore.subscribers)
 	concreteStore.subsMu.RUnlock()
 
 	if totalSubs != 0 {
