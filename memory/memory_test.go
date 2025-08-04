@@ -655,11 +655,6 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 		t.Errorf("Expected 0 subscription streams after close, got %d", totalSubs)
 	}
 
-	// Verify subscription is closed
-	select {
-	case <-subscription.Events():
-		// This should not block if the subscription is properly closed
-	default:
-		// This is expected - the channel should be closed
-	}
+	// The subscription cleanup is already verified above by checking
+	// that the subscription was removed from the store
 }
