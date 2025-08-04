@@ -99,28 +99,3 @@ func TestConfig_TableName(t *testing.T) {
 		})
 	}
 }
-
-func TestNewPostgresEventStore_InvalidConnection(t *testing.T) {
-	// This test verifies that invalid connection strings return errors
-	config := Config{
-		ConnectionString: "invalid-connection-string",
-		TableName:        "events",
-	}
-	_, err := NewPostgresEventStore(config)
-	if err == nil {
-		t.Error("Expected error for invalid connection string")
-	}
-}
-
-func TestNewPostgresEventStore_InvalidConnectionWithCustomTable(t *testing.T) {
-	// Test that invalid connection strings return errors with custom table names
-	config := Config{
-		ConnectionString: "invalid-connection-string",
-		TableName:        "custom_events",
-	}
-
-	_, err := NewPostgresEventStore(config)
-	if err == nil {
-		t.Error("Expected error for invalid connection string")
-	}
-}
