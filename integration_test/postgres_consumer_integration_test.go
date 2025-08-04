@@ -14,23 +14,8 @@ import (
 )
 
 func setupTestConsumer(t *testing.T) (eventstore.EventConsumer, eventstore.EventStore, *sql.DB) {
-	db, err := sql.Open("postgres", getTestConnectionString())
-	if err != nil {
-		t.Fatalf("Failed to open database connection: %v", err)
-	}
-
-	if err := db.Ping(); err != nil {
-		t.Fatalf("Failed to ping database: %v", err)
-	}
-
 	tableName := fmt.Sprintf("consumer_events_%d", time.Now().UnixNano())
-	if err := postgres.InitSchema(db, tableName); err != nil {
-		t.Fatalf("Failed to initialize schema: %v", err)
-	}
-
-	store := postgres.NewPostgresEventStore(db, tableName)
-	consumer := postgres.NewPostgresEventConsumer(db, tableName, 1*time.Second)
-	return consumer, store, db
+	return setupTestConsumerWithTableName(t, tableName, 1*time.Second)
 }
 
 func setupTestConsumerWithTableName(t *testing.T, tableName string, pollingInterval time.Duration) (eventstore.EventConsumer, eventstore.EventStore, *sql.DB) {
@@ -118,7 +103,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_WithTimestamp(t *testing.T) 
 	// Verify events are ordered by timestamp
 	for i := 1; i < len(allEvents); i++ {
 		if allEvents[i].Timestamp.Before(allEvents[i-1].Timestamp) {
-			t.Errorf("Events not ordered by timestamp: event %d (%v) before event %d (%v)", 
+			t.Errorf("Events not ordered by timestamp: event %d (%v) before event %d (%v)",
 				i, allEvents[i].Timestamp, i-1, allEvents[i-1].Timestamp)
 		}
 	}
@@ -179,8 +164,8 @@ func TestPostgresEventConsumer_Integration_Retrieve_WithBatchSize(t *testing.T) 
 }
 
 func TestPostgresEventConsumer_Integration_Subscribe_RealtimeEvents(t *testing.T) {
-	consumer, store, db := setupTestConsumerWithTableName(t, 
-		fmt.Sprintf("subscribe_events_%d", time.Now().UnixNano()), 
+	consumer, store, db := setupTestConsumerWithTableName(t,
+		fmt.Sprintf("subscribe_events_%d", time.Now().UnixNano()),
 		100*time.Millisecond) // Fast polling for testing
 	defer db.Close()
 
@@ -212,7 +197,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_RealtimeEvents(t *testing.T
 	// Collect events from subscription
 	var receivedEvents []eventstore.Event
 	timeout := time.After(2 * time.Second)
-	
+
 	for len(receivedEvents) < 2 {
 		select {
 		case event := <-subscription.Events():
@@ -269,7 +254,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_ExistingEvents(t *testing.T
 	// Collect existing events from subscription
 	var receivedEvents []eventstore.Event
 	timeout := time.After(2 * time.Second)
-	
+
 	for len(receivedEvents) < 2 {
 		select {
 		case event := <-subscription.Events():
@@ -295,8 +280,8 @@ func TestPostgresEventConsumer_Integration_Subscribe_ExistingEvents(t *testing.T
 }
 
 func TestPostgresEventConsumer_Integration_Subscribe_MultipleStreams(t *testing.T) {
-	consumer, store, db := setupTestConsumerWithTableName(t, 
-		fmt.Sprintf("multistream_events_%d", time.Now().UnixNano()), 
+	consumer, store, db := setupTestConsumerWithTableName(t,
+		fmt.Sprintf("multistream_events_%d", time.Now().UnixNano()),
 		50*time.Millisecond) // Fast polling for testing
 	defer db.Close()
 
@@ -345,7 +330,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_MultipleStreams(t *testing.
 	// Collect events from all streams
 	var receivedEvents []eventstore.Event
 	timeout := time.After(2 * time.Second)
-	
+
 	for len(receivedEvents) < 3 {
 		select {
 		case event := <-subscription.Events():
@@ -379,8 +364,8 @@ func TestPostgresEventConsumer_Integration_Subscribe_MultipleStreams(t *testing.
 func TestPostgresEventConsumer_Integration_Subscribe_PollingInterval(t *testing.T) {
 	// Test with longer polling interval to verify timing
 	pollingInterval := 500 * time.Millisecond
-	consumer, store, db := setupTestConsumerWithTableName(t, 
-		fmt.Sprintf("polling_events_%d", time.Now().UnixNano()), 
+	consumer, store, db := setupTestConsumerWithTableName(t,
+		fmt.Sprintf("polling_events_%d", time.Now().UnixNano()),
 		pollingInterval)
 	defer db.Close()
 
@@ -396,10 +381,10 @@ func TestPostgresEventConsumer_Integration_Subscribe_PollingInterval(t *testing.
 
 	// Add event and measure time to receive it
 	startTime := time.Now()
-	
+
 	go func() {
 		time.Sleep(100 * time.Millisecond) // Add event after subscription starts
-		
+
 		events := []eventstore.Event{
 			{Type: "PollingTestEvent", Data: []byte(`{"test": true}`)},
 		}
@@ -412,27 +397,27 @@ func TestPostgresEventConsumer_Integration_Subscribe_PollingInterval(t *testing.
 
 	// Wait for the event
 	timeout := time.After(2 * time.Second)
-	
+
 	select {
 	case event := <-subscription.Events():
 		elapsed := time.Since(startTime)
-		
+
 		if event.Type != "PollingTestEvent" {
 			t.Errorf("Expected PollingTestEvent, got %s", event.Type)
 		}
-		
+
 		// The event should be received within a reasonable timeframe considering polling interval
 		// It should take at least 100ms (our delay) but not much more than pollingInterval + delay
 		minExpected := 100 * time.Millisecond
 		maxExpected := pollingInterval + 200*time.Millisecond // Some buffer for processing
-		
+
 		if elapsed < minExpected {
 			t.Errorf("Event received too quickly: %v (expected at least %v)", elapsed, minExpected)
 		}
 		if elapsed > maxExpected {
 			t.Errorf("Event received too slowly: %v (expected at most %v)", elapsed, maxExpected)
 		}
-		
+
 	case err := <-subscription.Errors():
 		t.Fatalf("Subscription error: %v", err)
 	case <-timeout:
@@ -490,7 +475,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 		{Type: "UserEmailVerified", Data: []byte(`{"user_id": "123"}`)},
 	}
 
-	// Order stream  
+	// Order stream
 	orderEvents := []eventstore.Event{
 		{Type: "OrderCreated", Data: []byte(`{"order_id": "456", "user_id": "123", "amount": 100}`)},
 		{Type: "OrderPaid", Data: []byte(`{"order_id": "456", "payment_method": "card"}`)},
@@ -539,7 +524,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 	eventTypes := make(map[string]bool)
 	for _, event := range allEvents {
 		eventTypes[event.Type] = true
-		
+
 		// Verify each event has proper metadata
 		if event.ID == "" {
 			t.Errorf("Event %s missing ID", event.Type)
@@ -562,7 +547,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 	// Verify events are ordered by timestamp (chronological order of business process)
 	for i := 1; i < len(allEvents); i++ {
 		if allEvents[i].Timestamp.Before(allEvents[i-1].Timestamp) {
-			t.Errorf("Events not ordered by timestamp: event %d (%v, %s) before event %d (%v, %s)", 
+			t.Errorf("Events not ordered by timestamp: event %d (%v, %s) before event %d (%v, %s)",
 				i, allEvents[i].Timestamp, allEvents[i].Type,
 				i-1, allEvents[i-1].Timestamp, allEvents[i-1].Type)
 		}
