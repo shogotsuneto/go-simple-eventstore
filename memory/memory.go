@@ -24,8 +24,7 @@ type EventStoreConsumer interface {
 // relies on timestamp precision for event ordering and filtering.
 type InMemoryEventStore struct {
 	mu          sync.RWMutex
-	streams     map[string][]eventstore.Event
-	timeline    []eventstore.Event      // Central chronological event timeline
+	timeline    []eventstore.Event      // Central chronological event timeline - single source of truth
 	subscribers []*InMemorySubscription // Global list of active subscriptions
 	subsMu      sync.RWMutex
 	newEventCh  chan struct{} // Channel to notify subscribers of new events
@@ -34,7 +33,6 @@ type InMemoryEventStore struct {
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
 func NewInMemoryEventStore() EventStoreConsumer {
 	return &InMemoryEventStore{
-		streams:     make(map[string][]eventstore.Event),
 		timeline:    make([]eventstore.Event, 0),
 		subscribers: make([]*InMemorySubscription, 0),
 		newEventCh:  make(chan struct{}, 100), // Buffered to prevent blocking
@@ -50,9 +48,13 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get current stream (nil if stream does not exist)
-	stream := s.streams[streamID]
-	currentVersion := int64(len(stream))
+	// Calculate current version by counting events for this stream in timeline
+	currentVersion := int64(0)
+	for _, event := range s.timeline {
+		if event.Metadata != nil && event.Metadata["_streamId"] == streamID {
+			currentVersion++
+		}
+	}
 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {
@@ -71,22 +73,43 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 		}
 	}
 
-	// Set version and timestamp for each event
-	for i := range events {
-		events[i].Version = int64(len(stream) + i + 1)
-		if events[i].Timestamp.IsZero() {
-			events[i].Timestamp = time.Now()
+	// Set version, streamID (in metadata) and timestamp for each event
+	// Make copies to avoid modifying the original events passed by the caller
+	eventsToStore := make([]eventstore.Event, len(events))
+	for i, event := range events {
+		// Create a deep copy of the event
+		eventCopy := eventstore.Event{
+			ID:        event.ID,
+			Type:      event.Type,
+			Data:      make([]byte, len(event.Data)),
+			Timestamp: event.Timestamp,
+			Version:   currentVersion + int64(i) + 1,
 		}
-		if events[i].ID == "" {
-			events[i].ID = fmt.Sprintf("%s-%d", streamID, events[i].Version)
+		copy(eventCopy.Data, event.Data)
+		
+		// Copy metadata and add streamId
+		if event.Metadata != nil {
+			eventCopy.Metadata = make(map[string]string)
+			for k, v := range event.Metadata {
+				eventCopy.Metadata[k] = v
+			}
+		} else {
+			eventCopy.Metadata = make(map[string]string)
 		}
+		eventCopy.Metadata["_streamId"] = streamID
+		
+		if eventCopy.Timestamp.IsZero() {
+			eventCopy.Timestamp = time.Now()
+		}
+		if eventCopy.ID == "" {
+			eventCopy.ID = fmt.Sprintf("%s-%d", streamID, eventCopy.Version)
+		}
+		
+		eventsToStore[i] = eventCopy
 	}
 
-	// Append events to stream
-	s.streams[streamID] = append(stream, events...)
-
 	// Add events to central timeline and notify subscribers
-	s.addEventsToTimeline(events)
+	s.addEventsToTimeline(eventsToStore)
 	s.notifyNewEvents()
 
 	return nil
@@ -115,16 +138,23 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	stream, exists := s.streams[streamID]
-	if !exists {
-		return []eventstore.Event{}, nil
-	}
-
-	// Find starting position
+	// Filter timeline by streamID and build result
 	var result []eventstore.Event
-	for _, event := range stream {
-		if event.Version > opts.AfterVersion {
-			result = append(result, event)
+	for _, event := range s.timeline {
+		if event.Metadata != nil && event.Metadata["_streamId"] == streamID && event.Version > opts.AfterVersion {
+			// Make a copy of the event and remove internal metadata
+			cleanEvent := event
+			if cleanEvent.Metadata != nil {
+				// Create a new metadata map without internal fields
+				cleanMetadata := make(map[string]string)
+				for k, v := range cleanEvent.Metadata {
+					if k != "_streamId" {
+						cleanMetadata[k] = v
+					}
+				}
+				cleanEvent.Metadata = cleanMetadata
+			}
+			result = append(result, cleanEvent)
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
@@ -144,7 +174,19 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 	// Filter events from timeline by timestamp
 	for _, event := range s.timeline {
 		if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
-			result = append(result, event)
+			// Make a copy of the event and remove internal metadata
+			cleanEvent := event
+			if cleanEvent.Metadata != nil {
+				// Create a new metadata map without internal fields
+				cleanMetadata := make(map[string]string)
+				for k, v := range cleanEvent.Metadata {
+					if k != "_streamId" {
+						cleanMetadata[k] = v
+					}
+				}
+				cleanEvent.Metadata = cleanMetadata
+			}
+			result = append(result, cleanEvent)
 		}
 	}
 
@@ -294,8 +336,21 @@ func (s *InMemorySubscription) processTimelineEvents() int {
 		
 		// Filter by timestamp - allow events with same timestamp or after
 		if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
+			// Make a copy of the event and remove internal metadata
+			cleanEvent := event
+			if cleanEvent.Metadata != nil {
+				// Create a new metadata map without internal fields
+				cleanMetadata := make(map[string]string)
+				for k, v := range cleanEvent.Metadata {
+					if k != "_streamId" {
+						cleanMetadata[k] = v
+					}
+				}
+				cleanEvent.Metadata = cleanMetadata
+			}
+			
 			select {
-			case s.eventsCh <- event:
+			case s.eventsCh <- cleanEvent:
 				s.mu.Lock()
 				s.cursor = i + 1
 				s.fromTimestamp = event.Timestamp
