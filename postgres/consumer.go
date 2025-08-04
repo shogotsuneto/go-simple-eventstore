@@ -135,12 +135,12 @@ func (s *PostgresSubscription) start() {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.mu.Unlock()
 
-	// Load existing events first
-	s.loadInitialEvents()
-
-	// Start polling for new events
+	// Start polling immediately - first poll will load any existing events
 	ticker := time.NewTicker(s.pollingInterval)
 	defer ticker.Stop()
+
+	// Poll immediately, then continue on ticker
+	s.pollForEvents()
 
 	for {
 		select {
@@ -150,64 +150,6 @@ func (s *PostgresSubscription) start() {
 			return
 		case <-ticker.C:
 			s.pollForEvents()
-		}
-	}
-}
-
-// loadInitialEvents loads any existing events that match our criteria using timestamp-based filtering.
-func (s *PostgresSubscription) loadInitialEvents() {
-	// Safety check - don't try to load if store or db is nil
-	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
-		return
-	}
-
-	s.mu.Lock()
-	batchSize := s.batchSize
-	if batchSize == 0 {
-		batchSize = 100 // Default batch size
-	}
-
-	// Use timestamp-based filtering for initial load
-	events, err := s.store.loadEventsByTimestamp(eventstore.ConsumeOptions{
-		FromTimestamp: s.fromTimestamp,
-		BatchSize:     batchSize,
-	})
-	s.mu.Unlock()
-
-	if err != nil {
-		select {
-		case s.errorsCh <- err:
-		case <-s.closeCh:
-			return
-		}
-		return
-	}
-
-	for _, event := range events {
-		s.mu.Lock()
-		
-		// Check if we've moved to a new timestamp
-		if !event.Timestamp.Equal(s.currentTimestamp) {
-			// Clear processed IDs for new timestamp
-			s.processedEventIDs = make(map[string]struct{})
-			s.currentTimestamp = event.Timestamp
-		}
-		
-		// Skip if we've already processed this Event.ID within the current timestamp
-		if _, processed := s.processedEventIDs[event.ID]; processed {
-			s.mu.Unlock()
-			continue
-		}
-		
-		// Mark Event.ID as processed
-		s.processedEventIDs[event.ID] = struct{}{}
-		s.fromTimestamp = event.Timestamp
-		s.mu.Unlock()
-
-		select {
-		case s.eventsCh <- event:
-		case <-s.closeCh:
-			return
 		}
 	}
 }
