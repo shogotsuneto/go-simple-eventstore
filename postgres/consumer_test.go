@@ -7,25 +7,7 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-func TestPostgresEventConsumer_Retrieve_InvalidConnection(t *testing.T) {
-	// Test that Retrieve method exists and can be called
-	// This is a minimal test since we don't have a real DB connection in unit tests
-	store := &PostgresEventConsumer{
-		pgClient: &pgClient{
-			db:        nil, // This will cause an error when actually used
-			tableName: "events",
-		},
-		subscriptions:   []*PostgresSubscription{}, // Updated to slice
-		pollingInterval: 1 * time.Second,
-	}
 
-	// We expect this to panic/error since db is nil, so we just test the method exists
-	// In real usage, this would be tested with integration tests
-	if store.db == nil && store.tableName == "events" {
-		// Test passes - method signature is correct
-		t.Log("Retrieve method signature is correct")
-	}
-}
 
 func TestPostgresEventConsumer_Subscribe_InvalidConnection(t *testing.T) {
 	// Test that Subscribe method exists and can be called
