@@ -27,9 +27,9 @@ type UserEmailChanged struct {
 }
 
 func main() {
-	// Command-line flags for PostgreSQL connection and custom table name
+	// Command-line flags for PostgreSQL connection and table name
 	var pgConnStr = flag.String("postgres-conn", "host=localhost port=5432 user=test password=test dbname=eventstore_test sslmode=disable", "PostgreSQL connection string")
-	var tableName = flag.String("table-name", "", "Custom table name for storing events (uses default 'events' if not specified)")
+	var tableName = flag.String("table-name", "events", "Table name for storing events (required)")
 	flag.Parse()
 
 	fmt.Println("🚀 Go Simple EventStore - PostgreSQL Example")
@@ -53,11 +53,7 @@ func main() {
 	}
 
 	// Initialize the database schema
-	if *tableName != "" {
-		fmt.Printf("🔧 Initializing database schema with table '%s'...\n", *tableName)
-	} else {
-		fmt.Println("🔧 Initializing database schema with default table 'events'...")
-	}
+	fmt.Printf("🔧 Initializing database schema with table '%s'...\n", *tableName)
 	if err := postgres.InitSchema(db, *tableName); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
@@ -179,10 +175,6 @@ func main() {
 
 	fmt.Println("\n🎉 PostgreSQL example completed successfully!")
 
-	if *tableName != "" {
-		fmt.Printf("💡 Events were stored in custom table '%s'. You can run this example with different table names using the -table-name flag.\n", *tableName)
-	} else {
-		fmt.Println("💡 Events were stored in the default 'events' table. You can use a custom table name with the -table-name flag.")
-		fmt.Println("   Example: go run main.go -table-name=my_custom_events")
-	}
+	fmt.Printf("💡 Events were stored in table '%s'. You can run this example with different table names using the -table-name flag.\n", *tableName)
+	fmt.Println("   Example: go run main.go -table-name=my_custom_events")
 }

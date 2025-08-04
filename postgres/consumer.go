@@ -18,9 +18,10 @@ type PostgresEventConsumer struct {
 }
 
 // NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection, table name, and polling interval.
+// tableName must not be empty.
 func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) eventstore.EventConsumer {
 	if tableName == "" {
-		tableName = "events"
+		panic("table name must not be empty")
 	}
 
 	if pollingInterval <= 0 {
