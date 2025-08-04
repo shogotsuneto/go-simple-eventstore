@@ -248,9 +248,6 @@ func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventsto
 	// Add subscription to global list
 	s.subscriptions = append(s.subscriptions, sub)
 
-	// Start subscription goroutine
-	go sub.start()
-
 	// Immediately notify about existing events in timeline
 	s.mu.RLock()
 	existingEvents := make([]eventstore.Event, len(s.timeline))
@@ -335,8 +332,4 @@ func (s *InMemorySubscription) Close() error {
 	return nil
 }
 
-// start begins the subscription lifecycle.
-func (s *InMemorySubscription) start() {
-	// Keep subscription alive until closed - all events come via notifySubscriptions
-	<-s.closeCh
-}
+
