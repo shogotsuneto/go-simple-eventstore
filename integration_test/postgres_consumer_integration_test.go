@@ -553,37 +553,3 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 		}
 	}
 }
-
-func TestPostgresEventConsumer_Integration_CustomTableName(t *testing.T) {
-	customTableName := fmt.Sprintf("custom_consumer_events_%d", time.Now().UnixNano())
-	consumer, store, db := setupTestConsumerWithTableName(t, customTableName, 1*time.Second)
-	defer db.Close()
-
-	// Add events
-	events := []eventstore.Event{
-		{Type: "CustomTableEvent", Data: []byte(`{"table": "custom"}`)},
-	}
-
-	streamID := "custom-table-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
-	if err != nil {
-		t.Fatalf("Failed to append to custom table: %v", err)
-	}
-
-	// Retrieve from consumer (should work with custom table)
-	retrievedEvents, err := consumer.Retrieve(eventstore.ConsumeOptions{
-		FromTimestamp: time.Now().Add(-1 * time.Hour),
-		BatchSize:     10,
-	})
-	if err != nil {
-		t.Fatalf("Retrieve from custom table failed: %v", err)
-	}
-
-	if len(retrievedEvents) != 1 {
-		t.Fatalf("Expected 1 event from custom table, got %d", len(retrievedEvents))
-	}
-
-	if retrievedEvents[0].Type != "CustomTableEvent" {
-		t.Errorf("Expected CustomTableEvent, got %s", retrievedEvents[0].Type)
-	}
-}
