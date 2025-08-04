@@ -127,7 +127,9 @@ func (s *PostgresSubscription) Close() error {
 
 // start begins the subscription lifecycle with polling.
 func (s *PostgresSubscription) start() {
+	s.mu.Lock()
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.mu.Unlock()
 
 	// Load existing events first
 	s.loadInitialEvents()
@@ -155,6 +157,7 @@ func (s *PostgresSubscription) loadInitialEvents() {
 		return
 	}
 
+	s.mu.Lock()
 	batchSize := s.batchSize
 	if batchSize == 0 {
 		batchSize = 100 // Default batch size
@@ -164,6 +167,8 @@ func (s *PostgresSubscription) loadInitialEvents() {
 		FromTimestamp: s.fromTimestamp,
 		BatchSize:     batchSize,
 	})
+	s.mu.Unlock()
+
 	if err != nil {
 		select {
 		case s.errorsCh <- err:
@@ -176,7 +181,9 @@ func (s *PostgresSubscription) loadInitialEvents() {
 	for _, event := range events {
 		select {
 		case s.eventsCh <- event:
+			s.mu.Lock()
 			s.fromTimestamp = event.Timestamp
+			s.mu.Unlock()
 		case <-s.closeCh:
 			return
 		}
@@ -190,6 +197,7 @@ func (s *PostgresSubscription) pollForEvents() {
 		return
 	}
 
+	s.mu.Lock()
 	batchSize := s.batchSize
 	if batchSize == 0 {
 		batchSize = 100 // Default batch size
@@ -199,6 +207,8 @@ func (s *PostgresSubscription) pollForEvents() {
 		FromTimestamp: s.fromTimestamp,
 		BatchSize:     batchSize,
 	})
+	s.mu.Unlock()
+
 	if err != nil {
 		select {
 		case s.errorsCh <- err:
@@ -210,7 +220,9 @@ func (s *PostgresSubscription) pollForEvents() {
 	for _, event := range events {
 		select {
 		case s.eventsCh <- event:
+			s.mu.Lock()
 			s.fromTimestamp = event.Timestamp
+			s.mu.Unlock()
 		case <-s.closeCh:
 			return
 		}

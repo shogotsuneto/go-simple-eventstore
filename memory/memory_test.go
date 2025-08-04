@@ -477,28 +477,18 @@ func TestInMemoryEventStore_Retrieve(t *testing.T) {
 func TestInMemoryEventStore_Subscribe(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	// Subscribe to all streams
-	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
-		FromTimestamp: time.Time{}, // From the beginning
-		BatchSize:     10,
-	})
-	if err != nil {
-		t.Fatalf("Failed to create subscription: %v", err)
-	}
-	defer subscription.Close()
-
-	// Add some events to different streams
+	// Add some events to different streams before subscribing
 	events1 := []eventstore.Event{
 		{Type: "UserCreated", Data: []byte(`{"user_id": "123"}`)},
 	}
 
-	err = store.Append("user-123", events1, -1)
+	err := store.Append("user-123", events1, -1)
 	if err != nil {
 		t.Fatalf("Failed to append events to user-123: %v", err)
 	}
 
 	// Sleep briefly to ensure different timestamps
-	time.Sleep(time.Microsecond)
+	time.Sleep(time.Millisecond)
 
 	events2 := []eventstore.Event{
 		{Type: "OrderCreated", Data: []byte(`{"order_id": "456"}`)},
@@ -508,6 +498,16 @@ func TestInMemoryEventStore_Subscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to append events to order-456: %v", err)
 	}
+
+	// Now subscribe to all streams (should pick up existing events)
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	defer subscription.Close()
 
 	// Read events from subscription
 	receivedEvents := make([]eventstore.Event, 0)
