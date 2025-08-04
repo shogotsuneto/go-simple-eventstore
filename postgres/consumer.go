@@ -49,7 +49,6 @@ func (s *PostgresEventConsumer) Subscribe(opts eventstore.ConsumeOptions) (event
 
 	sub := &PostgresSubscription{
 		fromTimestamp:     opts.FromTimestamp,
-		currentTimestamp:  opts.FromTimestamp,
 		processedEventIDs: make(map[string]struct{}),
 		batchSize:         opts.BatchSize,
 		pollingInterval:   s.pollingInterval,
@@ -86,7 +85,6 @@ func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 // PostgresSubscription represents an active subscription to all streams in PostgreSQL.
 type PostgresSubscription struct {
 	fromTimestamp     time.Time
-	currentTimestamp  time.Time                    // Track current timestamp being processed
 	processedEventIDs map[string]struct{}          // Track Event.IDs processed within current timestamp
 	batchSize         int
 	pollingInterval   time.Duration
@@ -186,10 +184,9 @@ func (s *PostgresSubscription) pollForEvents() {
 		s.mu.Lock()
 		
 		// Check if we've moved to a new timestamp
-		if !event.Timestamp.Equal(s.currentTimestamp) {
+		if !event.Timestamp.Equal(s.fromTimestamp) {
 			// Clear processed IDs for new timestamp
 			s.processedEventIDs = make(map[string]struct{})
-			s.currentTimestamp = event.Timestamp
 		}
 		
 		// Skip if we've already processed this Event.ID within the current timestamp
