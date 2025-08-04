@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"testing"
+	"time"
 )
 
 func TestQuoteIdentifier(t *testing.T) {
@@ -59,14 +60,6 @@ func TestConfig_TableName(t *testing.T) {
 		expectedTable string
 	}{
 		{
-			name: "default table name when empty",
-			config: Config{
-				ConnectionString: "test-conn",
-				TableName:        "",
-			},
-			expectedTable: "events",
-		},
-		{
 			name: "custom table name",
 			config: Config{
 				ConnectionString: "test-conn",
@@ -90,12 +83,58 @@ func TestConfig_TableName(t *testing.T) {
 			// so we'll just test the table name assignment logic
 			tableName := tt.config.TableName
 			if tableName == "" {
-				tableName = "events"
+				t.Errorf("Table name should not be empty")
+				return
 			}
 
 			if tableName != tt.expectedTable {
 				t.Errorf("Expected table name %s, got %s", tt.expectedTable, tableName)
 			}
 		})
+	}
+}
+
+func TestInitSchema_EmptyTableName(t *testing.T) {
+	// Test that InitSchema rejects empty table names
+	err := InitSchema(nil, "")
+	if err == nil {
+		t.Error("InitSchema should return error for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+}
+
+func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
+	// Test that NewPostgresEventStore returns an error for empty table names
+	store, err := NewPostgresEventStore(nil, "")
+	if err == nil {
+		t.Error("NewPostgresEventStore should return error for empty table name")
+	}
+	if store != nil {
+		t.Error("NewPostgresEventStore should return nil store for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+}
+
+func TestNewPostgresEventConsumer_EmptyTableName(t *testing.T) {
+	// Test that NewPostgresEventConsumer returns an error for empty table names
+	consumer, err := NewPostgresEventConsumer(nil, "", 1*time.Second)
+	if err == nil {
+		t.Error("NewPostgresEventConsumer should return error for empty table name")
+	}
+	if consumer != nil {
+		t.Error("NewPostgresEventConsumer should return nil consumer for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
 	}
 }
