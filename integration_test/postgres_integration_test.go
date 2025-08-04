@@ -27,33 +27,22 @@ func getTestConnectionString() string {
 	return connStr
 }
 
-func setupTestStore(t *testing.T) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStore(postgres.Config{
-		ConnectionString: getTestConnectionString(),
-		TableName:        "events", // Explicit default table name
-	})
+func setupTestStore(t *testing.T, tableName string) (eventstore.EventStore, *sql.DB) {
+	db, err := sql.Open("postgres", getTestConnectionString())
 	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+		t.Fatalf("Failed to open database connection: %v", err)
 	}
-	
-	if err := store.InitSchema(); err != nil {
-		t.Fatalf("Failed to initialize schema: %v", err)
-	}
-	
-	return store
-}
 
-func setupTestStoreWithConfig(t *testing.T, config postgres.Config) *postgres.PostgresEventStore {
-	store, err := postgres.NewPostgresEventStore(config)
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL event store with config: %v", err)
+	if err := db.Ping(); err != nil {
+		t.Fatalf("Failed to ping database: %v", err)
 	}
-	
-	if err := store.InitSchema(); err != nil {
+
+	if err := postgres.InitSchema(db, tableName); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
-	
-	return store
+
+	store := postgres.NewPostgresEventStore(db, tableName)
+	return store, db
 }
 
 // Helper function to check if a table exists in the database
@@ -99,8 +88,9 @@ func countEventsInTable(t *testing.T, connectionString, tableName string) int {
 }
 
 func TestPostgresEventStore_Integration_Append(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
+	defer db.Close()
 
 	events := []eventstore.Event{
 		{
@@ -126,7 +116,7 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -169,11 +159,12 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
+	defer db.Close()
 
 	streamID := "non-existent-stream-" + time.Now().Format("20060102150405")
-	events, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	events, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -184,8 +175,8 @@ func TestPostgresEventStore_Integration_Load_EmptyStream(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	// Add some events
 	events := []eventstore.Event{
@@ -201,13 +192,13 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 1, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load with version failed: %v", err)
 	}
 
 	if len(loadedEvents) != 2 {
-		t.Fatalf("Expected 2 events with fromVersion 1, got %d", len(loadedEvents))
+		t.Fatalf("Expected 2 events with afterVersion 1, got %d", len(loadedEvents))
 	}
 
 	if loadedEvents[0].Type != "Event2" {
@@ -219,8 +210,8 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	// Add some events
 	events := []eventstore.Event{
@@ -236,7 +227,7 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 2})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 2})
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -256,8 +247,8 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 
 
 func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	streamID := "concurrent-test-stream-" + time.Now().Format("20060102150405")
 	
@@ -288,7 +279,7 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 	}
 	
 	// Verify all events were stored with correct versions
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -307,8 +298,8 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	streamID := "expected-version-new-stream-" + time.Now().Format("20060102150405")
 	
@@ -323,7 +314,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 	}
 
 	// Verify the event was stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -344,8 +335,8 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	streamID := "expected-version-exact-match-" + time.Now().Format("20060102150405")
 
@@ -368,7 +359,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 	}
 
 	// Verify both events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -401,8 +392,8 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 }
 
 func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	streamID := "expected-version-no-check-" + time.Now().Format("20060102150405")
 	
@@ -423,7 +414,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
 	}
 
 	// Verify both events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -441,8 +432,8 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
 }
 
 func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) {
-	store := setupTestStore(t)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	streamID := "conflict-test-stream-" + time.Now().Format("20060102150405")
 	
@@ -546,19 +537,14 @@ func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) 
 func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	customTableName := "custom_events_" + time.Now().Format("20060102150405")
 	
-	config := postgres.Config{
-		ConnectionString: getTestConnectionString(),
-		TableName:        customTableName,
-	}
-	
 	// First check that the custom table doesn't exist
 	connStr := getTestConnectionString()
 	if checkTableExists(t, connStr, customTableName) {
 		t.Fatalf("Custom table %s should not exist before initialization", customTableName)
 	}
 	
-	store := setupTestStoreWithConfig(t, config)
-	defer store.Close()
+	store, db := setupTestStore(t, customTableName)
+	defer db.Close()
 
 	// Check that the custom table was created
 	if !checkTableExists(t, connStr, customTableName) {
@@ -590,7 +576,7 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 
 	// Test that Load also works with the custom table name
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed from custom table: %v", err)
 	}
@@ -604,50 +590,14 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 }
 
-func TestPostgresEventStore_Integration_DefaultTableName(t *testing.T) {
-	// Test that the old constructor still works with default table name
-	store := setupTestStore(t)
-	defer store.Close()
 
-	events := []eventstore.Event{
-		{
-			Type: "CompatibilityTest",
-			Data: []byte(`{"test": "backward_compatibility"}`),
-		},
-	}
-
-	streamID := "backward-compatibility-test-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
-	if err != nil {
-		t.Fatalf("Append failed with old constructor: %v", err)
-	}
-
-	// Verify events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
-	if err != nil {
-		t.Fatalf("Load failed with old constructor: %v", err)
-	}
-
-	if len(loadedEvents) != 1 {
-		t.Fatalf("Expected 1 event, got %d", len(loadedEvents))
-	}
-
-	if loadedEvents[0].Type != "CompatibilityTest" {
-		t.Errorf("Expected event type 'CompatibilityTest', got '%s'", loadedEvents[0].Type)
-	}
-}
 
 func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T) {
 	// Test that empty table name uses default "events"
-	config := postgres.Config{
-		ConnectionString: getTestConnectionString(),
-		TableName:        "", // Empty table name should use default
-	}
-	
 	connStr := getTestConnectionString()
 	
-	store := setupTestStoreWithConfig(t, config)
-	defer store.Close()
+	store, db := setupTestStore(t, "")
+	defer db.Close()
 
 	// Check that the default "events" table was created (not a custom one)
 	if !checkTableExists(t, connStr, "events") {
@@ -675,7 +625,7 @@ func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T)
 	}
 
 	// Test that Load also works with the default table name
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed from default table: %v", err)
 	}

@@ -10,6 +10,8 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
+// Tests for basic InMemoryEventStore functionality
+
 func TestInMemoryEventStore_Append(t *testing.T) {
 	store := NewInMemoryEventStore()
 
@@ -36,7 +38,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -73,7 +75,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 func TestInMemoryEventStore_Load_EmptyStream(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	events, err := store.Load("non-existent-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	events, err := store.Load("non-existent-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -99,13 +101,13 @@ func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 1, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load with version failed: %v", err)
 	}
 
 	if len(loadedEvents) != 2 {
-		t.Fatalf("Expected 2 events with fromVersion 1, got %d", len(loadedEvents))
+		t.Fatalf("Expected 2 events with afterVersion 1, got %d", len(loadedEvents))
 	}
 
 	if loadedEvents[0].Type != "Event2" {
@@ -132,7 +134,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 2})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 2})
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -157,7 +159,7 @@ func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 		t.Fatalf("Append empty events failed: %v", err)
 	}
 
-	events, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	events, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -185,7 +187,7 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -399,4 +401,327 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 			t.Errorf("Expected ActualVersion 1, got %d", versionMismatchErr.ActualVersion)
 		}
 	})
+}
+
+// Tests for InMemoryEventStore consumer functionality
+
+func TestInMemoryEventStore_Retrieve(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Add some events to different streams
+	events1 := []eventstore.Event{
+		{Type: "UserCreated", Data: []byte(`{"user_id": "123"}`)},
+		{Type: "UserUpdated", Data: []byte(`{"user_id": "123", "name": "John"}`)},
+	}
+
+	err := store.Append("user-123", events1, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to user-123: %v", err)
+	}
+
+	events2 := []eventstore.Event{
+		{Type: "OrderCreated", Data: []byte(`{"order_id": "456"}`)},
+	}
+
+	err = store.Append("order-456", events2, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to order-456: %v", err)
+	}
+
+	// Test retrieving all events from the beginning
+	retrievedEvents, err := store.Retrieve(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to retrieve events: %v", err)
+	}
+
+	if len(retrievedEvents) != 3 {
+		t.Errorf("Expected 3 events, got %d", len(retrievedEvents))
+	}
+
+	// Test retrieving with a timestamp filter
+	// Add another event after a delay
+	time.Sleep(10 * time.Millisecond)
+	cutoffTime := time.Now()
+	time.Sleep(10 * time.Millisecond)
+
+	events3 := []eventstore.Event{
+		{Type: "UserDeleted", Data: []byte(`{"user_id": "123"}`)},
+	}
+
+	err = store.Append("user-123", events3, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events after cutoff: %v", err)
+	}
+
+	// Should only get the UserDeleted event
+	retrievedEvents, err = store.Retrieve(eventstore.ConsumeOptions{
+		FromTimestamp: cutoffTime,
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to retrieve events with timestamp filter: %v", err)
+	}
+
+	if len(retrievedEvents) != 1 {
+		t.Errorf("Expected 1 event with timestamp filter, got %d", len(retrievedEvents))
+	}
+
+	if retrievedEvents[0].Type != "UserDeleted" {
+		t.Errorf("Expected UserDeleted event, got %s", retrievedEvents[0].Type)
+	}
+}
+
+func TestInMemoryEventStore_Subscribe(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Add some events to different streams before subscribing
+	events1 := []eventstore.Event{
+		{Type: "UserCreated", Data: []byte(`{"user_id": "123"}`)},
+	}
+
+	err := store.Append("user-123", events1, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to user-123: %v", err)
+	}
+
+	// Sleep briefly to ensure different timestamps
+	time.Sleep(time.Millisecond)
+
+	events2 := []eventstore.Event{
+		{Type: "OrderCreated", Data: []byte(`{"order_id": "456"}`)},
+	}
+
+	err = store.Append("order-456", events2, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to order-456: %v", err)
+	}
+
+	// Now subscribe to all streams (should pick up existing events)
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	defer subscription.Close()
+
+	// Read events from subscription
+	receivedEvents := make([]eventstore.Event, 0)
+	timeout := time.After(2 * time.Second)
+
+	for len(receivedEvents) < 2 {
+		select {
+		case event := <-subscription.Events():
+			receivedEvents = append(receivedEvents, event)
+		case err := <-subscription.Errors():
+			t.Fatalf("Subscription error: %v", err)
+		case <-timeout:
+			t.Fatalf("Timeout waiting for events. Received %d events", len(receivedEvents))
+		}
+	}
+
+	if len(receivedEvents) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(receivedEvents))
+	}
+
+	// Events should be ordered by timestamp
+	if receivedEvents[0].Type != "UserCreated" {
+		t.Errorf("Expected first event to be UserCreated, got %s", receivedEvents[0].Type)
+	}
+
+	if receivedEvents[1].Type != "OrderCreated" {
+		t.Errorf("Expected second event to be OrderCreated, got %s", receivedEvents[1].Type)
+	}
+}
+
+func TestInMemoryEventStore_Subscribe_EventsCreatedAfterSubscription(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Create subscription BEFORE any events exist
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	defer subscription.Close()
+
+	// Now create events AFTER the subscription is established
+	events1 := []eventstore.Event{
+		{Type: "UserCreated", Data: []byte(`{"user_id": "123"}`)},
+	}
+
+	err = store.Append("user-123", events1, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to user-123: %v", err)
+	}
+
+	// Sleep briefly to ensure different timestamps
+	time.Sleep(time.Millisecond)
+
+	events2 := []eventstore.Event{
+		{Type: "OrderCreated", Data: []byte(`{"order_id": "456"}`)},
+	}
+
+	err = store.Append("order-456", events2, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to order-456: %v", err)
+	}
+
+	// Read events from subscription
+	receivedEvents := make([]eventstore.Event, 0)
+	timeout := time.After(2 * time.Second)
+
+	for len(receivedEvents) < 2 {
+		select {
+		case event := <-subscription.Events():
+			receivedEvents = append(receivedEvents, event)
+		case err := <-subscription.Errors():
+			t.Fatalf("Subscription error: %v", err)
+		case <-timeout:
+			t.Fatalf("Timeout waiting for events. Received %d events", len(receivedEvents))
+		}
+	}
+
+	if len(receivedEvents) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(receivedEvents))
+	}
+
+	// Events should be ordered by timestamp
+	if receivedEvents[0].Type != "UserCreated" {
+		t.Errorf("Expected first event to be UserCreated, got %s", receivedEvents[0].Type)
+	}
+
+	if receivedEvents[1].Type != "OrderCreated" {
+		t.Errorf("Expected second event to be OrderCreated, got %s", receivedEvents[1].Type)
+	}
+}
+
+func TestInMemoryEventStore_Subscribe_WithFromTimestamp(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Add some initial events
+	initialEvents := []eventstore.Event{
+		{Type: "UserCreated", Data: []byte(`{"user_id": "123"}`)},
+		{Type: "UserUpdated", Data: []byte(`{"user_id": "123", "name": "John"}`)},
+	}
+
+	err := store.Append("user-123", initialEvents, -1)
+	if err != nil {
+		t.Fatalf("Failed to append initial events: %v", err)
+	}
+
+	time.Sleep(10 * time.Millisecond)
+	cutoffTime := time.Now()
+	time.Sleep(10 * time.Millisecond)
+
+	// Subscribe from the cutoff time (should only get events after this time)
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: cutoffTime,
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	defer subscription.Close()
+
+	// Add another event after the cutoff time
+	newEvents := []eventstore.Event{
+		{Type: "UserDeleted", Data: []byte(`{"user_id": "123"}`)},
+	}
+
+	err = store.Append("user-123", newEvents, -1)
+	if err != nil {
+		t.Fatalf("Failed to append new events: %v", err)
+	}
+
+	// Should receive the new event
+	timeout := time.After(1 * time.Second)
+	select {
+	case event := <-subscription.Events():
+		if event.Type != "UserDeleted" {
+			t.Errorf("Expected UserDeleted event, got %s", event.Type)
+		}
+	case err := <-subscription.Errors():
+		t.Fatalf("Subscription error: %v", err)
+	case <-timeout:
+		t.Fatalf("Timeout waiting for new event")
+	}
+}
+
+func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{},
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+
+	// Close the subscription
+	err = subscription.Close()
+	if err != nil {
+		t.Errorf("Failed to close subscription: %v", err)
+	}
+
+	// Closing again should not error
+	err = subscription.Close()
+	if err != nil {
+		t.Errorf("Second close should not error: %v", err)
+	}
+
+	// Verify subscription is removed from store (access internal fields for testing)
+	concreteStore := store.(*InMemoryEventStore)
+	concreteStore.subsMu.RLock()
+	subs := concreteStore.subscriptions
+	concreteStore.subsMu.RUnlock()
+
+	if len(subs) != 0 {
+		t.Errorf("Expected 0 subscriptions, got %d", len(subs))
+	}
+}
+
+func TestInMemoryEventStore_Close(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Create a subscription
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{},
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+
+	// Verify subscription was created
+	concreteStore := store.(*InMemoryEventStore)
+	concreteStore.subsMu.RLock()
+	subs := concreteStore.subscriptions
+	concreteStore.subsMu.RUnlock()
+
+	if len(subs) != 1 {
+		t.Errorf("Expected 1 subscription, got %d", len(subs))
+	}
+
+	// Close the subscription directly
+	subscription.Close()
+
+	// Verify all subscriptions were closed
+	concreteStore.subsMu.RLock()
+	totalSubs := len(concreteStore.subscriptions)
+	concreteStore.subsMu.RUnlock()
+
+	if totalSubs != 0 {
+		t.Errorf("Expected 0 subscription streams after close, got %d", totalSubs)
+	}
+
+	// The subscription cleanup is already verified above by checking
+	// that the subscription was removed from the store
 }

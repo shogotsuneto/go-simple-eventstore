@@ -1,11 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 
+	_ "github.com/lib/pq" // PostgreSQL driver
 	eventstore "github.com/shogotsuneto/go-simple-eventstore"
 	"github.com/shogotsuneto/go-simple-eventstore/postgres"
 )
@@ -33,20 +35,22 @@ func main() {
 	fmt.Println("🚀 Go Simple EventStore - PostgreSQL Example")
 	fmt.Println("============================================")
 
-	var store *postgres.PostgresEventStore
+	var store eventstore.EventStore
+	var db *sql.DB
 	var err error
 
-	// Create PostgreSQL event store
+	// Create PostgreSQL connection
 	fmt.Printf("Connecting to PostgreSQL...\n")
-	store, err = postgres.NewPostgresEventStore(postgres.Config{
-		ConnectionString: *pgConnStr,
-		TableName:        *tableName, // Uses default "events" if empty
-	})
-
+	db, err = sql.Open("postgres", *pgConnStr)
 	if err != nil {
-		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
+		log.Fatalf("Failed to open PostgreSQL connection: %v", err)
 	}
-	defer store.Close()
+	defer db.Close()
+
+	// Test the connection
+	if err = db.Ping(); err != nil {
+		log.Fatalf("Failed to ping PostgreSQL: %v", err)
+	}
 
 	// Initialize the database schema
 	if *tableName != "" {
@@ -54,9 +58,13 @@ func main() {
 	} else {
 		fmt.Println("🔧 Initializing database schema with default table 'events'...")
 	}
-	if err := store.InitSchema(); err != nil {
+	if err := postgres.InitSchema(db, *tableName); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
+
+	// Create PostgreSQL event store
+	store = postgres.NewPostgresEventStore(db, *tableName)
+
 	fmt.Println("✅ PostgreSQL event store ready")
 
 	// Create some domain events
@@ -106,7 +114,7 @@ func main() {
 	// Load events from the stream
 	fmt.Printf("\n📖 Loading events from stream '%s'...\n", streamID)
 
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
 	if err != nil {
 		log.Fatalf("Failed to load events: %v", err)
 	}
@@ -129,7 +137,7 @@ func main() {
 	fmt.Println("🔍 Demonstrating version-based loading...")
 	fmt.Println("Loading events starting from version 1:")
 
-	versionEvents, err := store.Load(streamID, eventstore.LoadOptions{FromVersion: 1, Limit: 1})
+	versionEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 1, Limit: 1})
 	if err != nil {
 		log.Fatalf("Failed to load events with version: %v", err)
 	}

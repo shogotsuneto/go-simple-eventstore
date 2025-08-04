@@ -25,8 +25,8 @@ type Event struct {
 
 // LoadOptions contains options for loading events from a stream.
 type LoadOptions struct {
-	// FromVersion specifies where to start loading events from
-	FromVersion int64
+	// AfterVersion specifies the version after which to start loading events
+	AfterVersion int64
 	// Limit specifies the maximum number of events to return
 	Limit int
 }
