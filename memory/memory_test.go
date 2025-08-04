@@ -497,6 +497,9 @@ func TestInMemoryEventStore_Subscribe(t *testing.T) {
 		t.Fatalf("Failed to append events to user-123: %v", err)
 	}
 
+	// Sleep briefly to ensure different timestamps
+	time.Sleep(time.Microsecond)
+
 	events2 := []eventstore.Event{
 		{Type: "OrderCreated", Data: []byte(`{"order_id": "456"}`)},
 	}

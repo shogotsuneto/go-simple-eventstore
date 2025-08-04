@@ -152,6 +152,7 @@ func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventsto
 		eventsCh:      make(chan eventstore.Event, 100), // Buffered channel
 		errorsCh:      make(chan error, 10),
 		closeCh:       make(chan struct{}),
+		notifyCh:      make(chan []eventstore.Event, 50), // Buffered channel for notifications
 		store:         s,
 	}
 
@@ -176,20 +177,15 @@ func (s *InMemoryEventStore) notifySubscriptions(streamID string, events []event
 	s.subsMu.RUnlock()
 
 	for _, sub := range subs {
-		for _, event := range events {
-			// Filter by timestamp instead of version
-			if sub.fromTimestamp.IsZero() || event.Timestamp.After(sub.fromTimestamp) || event.Timestamp.Equal(sub.fromTimestamp) {
-				select {
-				case sub.eventsCh <- event:
-					sub.fromTimestamp = event.Timestamp // Update the subscription's position
-				case <-sub.closeCh:
-					// Subscription is closed, skip
-					continue
-				default:
-					// Channel is full, skip (could also send error)
-					continue
-				}
-			}
+		select {
+		case sub.notifyCh <- events:
+			// Successfully sent notification
+		case <-sub.closeCh:
+			// Subscription is closed, skip
+			continue
+		default:
+			// Notification channel is full, skip (could also send error)
+			continue
 		}
 	}
 }
@@ -222,6 +218,7 @@ type InMemorySubscription struct {
 	eventsCh      chan eventstore.Event
 	errorsCh      chan error
 	closeCh       chan struct{}
+	notifyCh      chan []eventstore.Event // Channel for buffering new event notifications
 	store         *InMemoryEventStore
 	closed        bool
 	mu            sync.Mutex
@@ -291,6 +288,24 @@ func (s *InMemorySubscription) start() {
 		}
 	}
 
-	// Keep subscription alive until closed
-	<-s.closeCh
+	// Handle ongoing notifications
+	for {
+		select {
+		case events := <-s.notifyCh:
+			// Process new events from notification
+			for _, event := range events {
+				// Filter by timestamp instead of version
+				if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
+					select {
+					case s.eventsCh <- event:
+						s.fromTimestamp = event.Timestamp // Update the subscription's position
+					case <-s.closeCh:
+						return
+					}
+				}
+			}
+		case <-s.closeCh:
+			return
+		}
+	}
 }
