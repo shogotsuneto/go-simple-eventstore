@@ -538,6 +538,70 @@ func TestInMemoryEventStore_Subscribe(t *testing.T) {
 	}
 }
 
+func TestInMemoryEventStore_Subscribe_EventsCreatedAfterSubscription(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Create subscription BEFORE any events exist
+	subscription, err := store.Subscribe(eventstore.ConsumeOptions{
+		FromTimestamp: time.Time{}, // From the beginning
+		BatchSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create subscription: %v", err)
+	}
+	defer subscription.Close()
+
+	// Now create events AFTER the subscription is established
+	events1 := []eventstore.Event{
+		{Type: "UserCreated", Data: []byte(`{"user_id": "123"}`)},
+	}
+
+	err = store.Append("user-123", events1, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to user-123: %v", err)
+	}
+
+	// Sleep briefly to ensure different timestamps
+	time.Sleep(time.Millisecond)
+
+	events2 := []eventstore.Event{
+		{Type: "OrderCreated", Data: []byte(`{"order_id": "456"}`)},
+	}
+
+	err = store.Append("order-456", events2, -1)
+	if err != nil {
+		t.Fatalf("Failed to append events to order-456: %v", err)
+	}
+
+	// Read events from subscription
+	receivedEvents := make([]eventstore.Event, 0)
+	timeout := time.After(2 * time.Second)
+
+	for len(receivedEvents) < 2 {
+		select {
+		case event := <-subscription.Events():
+			receivedEvents = append(receivedEvents, event)
+		case err := <-subscription.Errors():
+			t.Fatalf("Subscription error: %v", err)
+		case <-timeout:
+			t.Fatalf("Timeout waiting for events. Received %d events", len(receivedEvents))
+		}
+	}
+
+	if len(receivedEvents) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(receivedEvents))
+	}
+
+	// Events should be ordered by timestamp
+	if receivedEvents[0].Type != "UserCreated" {
+		t.Errorf("Expected first event to be UserCreated, got %s", receivedEvents[0].Type)
+	}
+
+	if receivedEvents[1].Type != "OrderCreated" {
+		t.Errorf("Expected second event to be OrderCreated, got %s", receivedEvents[1].Type)
+	}
+}
+
 func TestInMemoryEventStore_Subscribe_WithFromTimestamp(t *testing.T) {
 	store := NewInMemoryEventStore()
 

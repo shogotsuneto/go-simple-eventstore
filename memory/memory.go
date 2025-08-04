@@ -257,7 +257,7 @@ func (s *InMemorySubscription) start() {
 	var allEvents []eventstore.Event
 	for _, stream := range s.store.streams {
 		for _, event := range stream {
-			if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
+			if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) {
 				allEvents = append(allEvents, event)
 			}
 		}
@@ -295,7 +295,7 @@ func (s *InMemorySubscription) start() {
 			// Process new events from notification
 			for _, event := range events {
 				// Filter by timestamp instead of version
-				if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
+				if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) {
 					select {
 					case s.eventsCh <- event:
 						s.fromTimestamp = event.Timestamp // Update the subscription's position
