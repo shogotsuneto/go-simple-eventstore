@@ -23,19 +23,19 @@ type EventStoreConsumer interface {
 // delivered multiple times to subscriptions. This is acceptable as the implementation
 // relies on timestamp precision for event ordering and filtering.
 type InMemoryEventStore struct {
-	mu          sync.RWMutex
-	timeline    []eventstore.Event      // Central chronological event timeline - single source of truth
-	subscribers []*InMemorySubscription // Global list of active subscriptions
-	subsMu      sync.RWMutex
-	newEventCh  chan struct{} // Channel to notify subscribers of new events
+	mu            sync.RWMutex
+	streams       map[string][]eventstore.Event
+	timeline      []eventstore.Event             // For cross-stream retrieval
+	subscriptions []*InMemorySubscription        // Global list of active subscriptions
+	subsMu        sync.RWMutex
 }
 
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
 func NewInMemoryEventStore() EventStoreConsumer {
 	return &InMemoryEventStore{
-		timeline:    make([]eventstore.Event, 0),
-		subscribers: make([]*InMemorySubscription, 0),
-		newEventCh:  make(chan struct{}, 100), // Buffered to prevent blocking
+		streams:       make(map[string][]eventstore.Event),
+		timeline:      make([]eventstore.Event, 0),
+		subscriptions: make([]*InMemorySubscription, 0),
 	}
 }
 
@@ -48,13 +48,9 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Calculate current version by counting events for this stream in timeline
-	currentVersion := int64(0)
-	for _, event := range s.timeline {
-		if event.Metadata != nil && event.Metadata["_streamId"] == streamID {
-			currentVersion++
-		}
-	}
+	// Get current stream (nil if stream does not exist)
+	stream := s.streams[streamID]
+	currentVersion := int64(len(stream))
 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {
@@ -73,11 +69,11 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 		}
 	}
 
-	// Set version, streamID (in metadata) and timestamp for each event
+	// Set version and timestamp for each event
 	// Make copies to avoid modifying the original events passed by the caller
 	eventsToStore := make([]eventstore.Event, len(events))
 	for i, event := range events {
-		// Create a deep copy of the event
+		// Create a copy of the event
 		eventCopy := eventstore.Event{
 			ID:        event.ID,
 			Type:      event.Type,
@@ -87,16 +83,13 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 		}
 		copy(eventCopy.Data, event.Data)
 		
-		// Copy metadata and add streamId
+		// Copy metadata
 		if event.Metadata != nil {
 			eventCopy.Metadata = make(map[string]string)
 			for k, v := range event.Metadata {
 				eventCopy.Metadata[k] = v
 			}
-		} else {
-			eventCopy.Metadata = make(map[string]string)
 		}
-		eventCopy.Metadata["_streamId"] = streamID
 		
 		if eventCopy.Timestamp.IsZero() {
 			eventCopy.Timestamp = time.Now()
@@ -108,9 +101,14 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 		eventsToStore[i] = eventCopy
 	}
 
-	// Add events to central timeline and notify subscribers
+	// Append events to stream
+	s.streams[streamID] = append(stream, eventsToStore...)
+
+	// Add events to timeline for cross-stream retrieval
 	s.addEventsToTimeline(eventsToStore)
-	s.notifyNewEvents()
+
+	// Notify subscriptions about new events
+	s.notifySubscriptions(eventsToStore)
 
 	return nil
 }
@@ -123,13 +121,67 @@ func (s *InMemoryEventStore) addEventsToTimeline(events []eventstore.Event) {
 	}
 }
 
-// notifyNewEvents notifies all subscribers that new events are available.
-func (s *InMemoryEventStore) notifyNewEvents() {
-	// Non-blocking notification
-	select {
-	case s.newEventCh <- struct{}{}:
-	default:
-		// Channel is full, skip (subscribers will eventually catch up)
+// notifySubscriptions notifies all subscriptions about new events.
+func (s *InMemoryEventStore) notifySubscriptions(events []eventstore.Event) {
+	s.subsMu.RLock()
+	subs := make([]*InMemorySubscription, len(s.subscriptions))
+	copy(subs, s.subscriptions)
+	s.subsMu.RUnlock()
+
+	for _, sub := range subs {
+		for _, event := range events {
+			sub.mu.Lock()
+			currentFromTimestamp := sub.fromTimestamp
+			sub.mu.Unlock()
+			
+			// Filter by timestamp - allow events with same timestamp or after
+			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
+				select {
+				case sub.eventsCh <- event:
+					sub.mu.Lock()
+					sub.fromTimestamp = event.Timestamp
+					sub.mu.Unlock()
+				case <-sub.closeCh:
+					// Subscription is closed, skip
+					continue
+				default:
+					// Channel is full, skip (could also send error)
+					continue
+				}
+			}
+		}
+	}
+}
+
+// notifySubscriptionsForExisting sends existing events to specific subscriptions
+func (s *InMemoryEventStore) notifySubscriptionsForExisting(subs []*InMemorySubscription, events []eventstore.Event) {
+	for _, sub := range subs {
+		count := 0
+		for _, event := range events {
+			sub.mu.Lock()
+			currentFromTimestamp := sub.fromTimestamp
+			sub.mu.Unlock()
+			
+			// Filter by timestamp - allow events with same timestamp or after
+			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
+				select {
+				case sub.eventsCh <- event:
+					sub.mu.Lock()
+					sub.fromTimestamp = event.Timestamp
+					sub.mu.Unlock()
+					count++
+					if sub.batchSize > 0 && count >= sub.batchSize {
+						break // Limit batch if specified
+					}
+				case <-sub.closeCh:
+					// Subscription is closed, skip
+					return
+				default:
+					// Channel is full, skip (could also send error)
+					return
+				}
+			}
+		}
 	}
 }
 
@@ -138,23 +190,16 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Filter timeline by streamID and build result
+	stream, exists := s.streams[streamID]
+	if !exists {
+		return []eventstore.Event{}, nil
+	}
+
+	// Find starting position
 	var result []eventstore.Event
-	for _, event := range s.timeline {
-		if event.Metadata != nil && event.Metadata["_streamId"] == streamID && event.Version > opts.AfterVersion {
-			// Make a copy of the event and remove internal metadata
-			cleanEvent := event
-			if cleanEvent.Metadata != nil {
-				// Create a new metadata map without internal fields
-				cleanMetadata := make(map[string]string)
-				for k, v := range cleanEvent.Metadata {
-					if k != "_streamId" {
-						cleanMetadata[k] = v
-					}
-				}
-				cleanEvent.Metadata = cleanMetadata
-			}
-			result = append(result, cleanEvent)
+	for _, event := range stream {
+		if event.Version > opts.AfterVersion {
+			result = append(result, event)
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
@@ -174,19 +219,7 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 	// Filter events from timeline by timestamp
 	for _, event := range s.timeline {
 		if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
-			// Make a copy of the event and remove internal metadata
-			cleanEvent := event
-			if cleanEvent.Metadata != nil {
-				// Create a new metadata map without internal fields
-				cleanMetadata := make(map[string]string)
-				for k, v := range cleanEvent.Metadata {
-					if k != "_streamId" {
-						cleanMetadata[k] = v
-					}
-				}
-				cleanEvent.Metadata = cleanMetadata
-			}
-			result = append(result, cleanEvent)
+			result = append(result, event)
 		}
 	}
 
@@ -210,14 +243,24 @@ func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventsto
 		errorsCh:      make(chan error, 10),
 		closeCh:       make(chan struct{}),
 		store:         s,
-		cursor:        0, // Start from beginning of timeline
 	}
 
 	// Add subscription to global list
-	s.subscribers = append(s.subscribers, sub)
+	s.subscriptions = append(s.subscriptions, sub)
 
 	// Start subscription goroutine
 	go sub.start()
+
+	// Immediately notify about existing events in timeline
+	s.mu.RLock()
+	existingEvents := make([]eventstore.Event, len(s.timeline))
+	copy(existingEvents, s.timeline)
+	s.mu.RUnlock()
+
+	// Send existing events through notification system
+	if len(existingEvents) > 0 {
+		go s.notifySubscriptionsForExisting([]*InMemorySubscription{sub}, existingEvents)
+	}
 
 	return sub, nil
 }
@@ -245,10 +288,10 @@ func (s *InMemoryEventStore) removeSubscription(sub *InMemorySubscription) {
 	defer s.subsMu.Unlock()
 
 	// Remove subscription from global list
-	for i, existing := range s.subscribers {
+	for i, existing := range s.subscriptions {
 		if existing == sub {
 			// Remove subscription from slice
-			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
+			s.subscriptions = append(s.subscriptions[:i], s.subscriptions[i+1:]...)
 			break
 		}
 	}
@@ -262,7 +305,6 @@ type InMemorySubscription struct {
 	errorsCh      chan error
 	closeCh       chan struct{}
 	store         *InMemoryEventStore
-	cursor        int  // Current position in the timeline
 	closed        bool
 	mu            sync.Mutex
 }
@@ -293,87 +335,8 @@ func (s *InMemorySubscription) Close() error {
 	return nil
 }
 
-// start begins the subscription lifecycle using cursor-based timeline reading.
-// This method processes both existing and new events from the single timeline source.
+// start begins the subscription lifecycle.
 func (s *InMemorySubscription) start() {
-	// Process events continuously
-	for {
-		select {
-		case <-s.closeCh:
-			return
-		case <-s.store.newEventCh:
-			// New events might be available, check timeline
-			s.processTimelineEvents()
-		default:
-			// Process any existing events on startup
-			if s.processTimelineEvents() == 0 {
-				// No events processed, wait for notification
-				select {
-				case <-s.closeCh:
-					return
-				case <-s.store.newEventCh:
-					// New events available, continue loop
-				}
-			}
-		}
-	}
-}
-
-// processTimelineEvents processes events from the timeline starting from the current cursor.
-// Returns the number of events processed.
-func (s *InMemorySubscription) processTimelineEvents() int {
-	s.store.mu.RLock()
-	timeline := s.store.timeline
-	s.store.mu.RUnlock()
-
-	processed := 0
-	s.mu.Lock()
-	currentCursor := s.cursor
-	s.mu.Unlock()
-
-	for i := currentCursor; i < len(timeline); i++ {
-		event := timeline[i]
-		
-		// Filter by timestamp - allow events with same timestamp or after
-		if s.fromTimestamp.IsZero() || event.Timestamp.After(s.fromTimestamp) || event.Timestamp.Equal(s.fromTimestamp) {
-			// Make a copy of the event and remove internal metadata
-			cleanEvent := event
-			if cleanEvent.Metadata != nil {
-				// Create a new metadata map without internal fields
-				cleanMetadata := make(map[string]string)
-				for k, v := range cleanEvent.Metadata {
-					if k != "_streamId" {
-						cleanMetadata[k] = v
-					}
-				}
-				cleanEvent.Metadata = cleanMetadata
-			}
-			
-			select {
-			case s.eventsCh <- cleanEvent:
-				s.mu.Lock()
-				s.cursor = i + 1
-				s.fromTimestamp = event.Timestamp
-				s.mu.Unlock()
-				processed++
-				
-				// Check batch size limit
-				if s.batchSize > 0 && processed >= s.batchSize {
-					break
-				}
-			case <-s.closeCh:
-				return processed
-			default:
-				// Channel is full, stop processing for now
-				return processed
-			}
-		} else {
-			// Update cursor even for filtered events
-			s.mu.Lock()
-			s.cursor = i + 1
-			s.mu.Unlock()
-		}
-	}
-	
-	return processed
+	// Keep subscription alive until closed - all events come via notifySubscriptions
+	<-s.closeCh
 }
