@@ -590,38 +590,7 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 }
 
-func TestPostgresEventStore_Integration_DefaultTableName(t *testing.T) {
-	// Test that the old constructor still works with default table name
-	store, db := setupTestStore(t, "")
-	defer db.Close()
 
-	events := []eventstore.Event{
-		{
-			Type: "CompatibilityTest",
-			Data: []byte(`{"test": "backward_compatibility"}`),
-		},
-	}
-
-	streamID := "backward-compatibility-test-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
-	if err != nil {
-		t.Fatalf("Append failed with old constructor: %v", err)
-	}
-
-	// Verify events were stored
-	loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
-	if err != nil {
-		t.Fatalf("Load failed with old constructor: %v", err)
-	}
-
-	if len(loadedEvents) != 1 {
-		t.Fatalf("Expected 1 event, got %d", len(loadedEvents))
-	}
-
-	if loadedEvents[0].Type != "CompatibilityTest" {
-		t.Errorf("Expected event type 'CompatibilityTest', got '%s'", loadedEvents[0].Type)
-	}
-}
 
 func TestPostgresEventStore_Integration_EmptyTableName_UsesDefault(t *testing.T) {
 	// Test that empty table name uses default "events"
