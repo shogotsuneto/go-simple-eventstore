@@ -555,7 +555,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 }
 
 // TestPostgresEventConsumer_Integration_NoDuplicateEvents tests that subscriptions don't receive duplicate events
-// when using timestamp-based filtering followed by ID-based polling.
+// when using timestamp-based filtering with Event.ID tracking for duplicates within the same timestamp.
 func TestPostgresEventConsumer_Integration_NoDuplicateEvents(t *testing.T) {
 	consumer, store, db := setupTestConsumer(t)
 	defer db.Close()

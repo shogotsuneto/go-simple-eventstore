@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"strconv"
 	"sync"
 	"time"
 
@@ -40,25 +39,7 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time
 
 // Retrieve retrieves events from all streams in a retrieval operation.
 func (s *PostgresEventConsumer) Retrieve(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	events, err := s.loadEventsByTimestamp(opts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Remove internal metadata from events before returning
-	for i := range events {
-		if events[i].Metadata != nil {
-			cleanMetadata := make(map[string]string)
-			for k, v := range events[i].Metadata {
-				if k != "_db_id" {
-					cleanMetadata[k] = v
-				}
-			}
-			events[i].Metadata = cleanMetadata
-		}
-	}
-
-	return events, nil
+	return s.loadEventsByTimestamp(opts)
 }
 
 // Subscribe creates a subscription to all streams for continuous event consumption.
@@ -67,15 +48,16 @@ func (s *PostgresEventConsumer) Subscribe(opts eventstore.ConsumeOptions) (event
 	defer s.subsMu.Unlock()
 
 	sub := &PostgresSubscription{
-		fromTimestamp:   opts.FromTimestamp,
-		lastEventID:     0, // Initialize to 0, will be updated after first fetch
-		batchSize:       opts.BatchSize,
-		pollingInterval: s.pollingInterval,
-		eventsCh:        make(chan eventstore.Event, 100), // Buffered channel
-		errorsCh:        make(chan error, 10),
-		closeCh:         make(chan struct{}),
-		store:           s,
-		ctx:             context.Background(),
+		fromTimestamp:     opts.FromTimestamp,
+		currentTimestamp:  opts.FromTimestamp,
+		processedEventIDs: make(map[string]struct{}),
+		batchSize:         opts.BatchSize,
+		pollingInterval:   s.pollingInterval,
+		eventsCh:          make(chan eventstore.Event, 100), // Buffered channel
+		errorsCh:          make(chan error, 10),
+		closeCh:           make(chan struct{}),
+		store:             s,
+		ctx:               context.Background(),
 	}
 
 	// Add subscription to the list
@@ -103,18 +85,19 @@ func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 
 // PostgresSubscription represents an active subscription to all streams in PostgreSQL.
 type PostgresSubscription struct {
-	fromTimestamp   time.Time
-	lastEventID     int64 // Track last processed event ID to avoid duplicates in polling
-	batchSize       int
-	pollingInterval time.Duration
-	eventsCh        chan eventstore.Event
-	errorsCh        chan error
-	closeCh         chan struct{}
-	store           *PostgresEventConsumer
-	ctx             context.Context
-	cancel          context.CancelFunc
-	closed          bool
-	mu              sync.Mutex
+	fromTimestamp     time.Time
+	currentTimestamp  time.Time                    // Track current timestamp being processed
+	processedEventIDs map[string]struct{}          // Track Event.IDs processed within current timestamp
+	batchSize         int
+	pollingInterval   time.Duration
+	eventsCh          chan eventstore.Event
+	errorsCh          chan error
+	closeCh           chan struct{}
+	store             *PostgresEventConsumer
+	ctx               context.Context
+	cancel            context.CancelFunc
+	closed            bool
+	mu                sync.Mutex
 }
 
 // Events returns a channel that receives events as they are appended to the stream.
@@ -201,40 +184,35 @@ func (s *PostgresSubscription) loadInitialEvents() {
 	}
 
 	for _, event := range events {
-		// Extract database ID before sending event to channel
-		var dbID int64
-		if eventIDStr, ok := event.Metadata["_db_id"]; ok {
-			if parsed, err := strconv.ParseInt(eventIDStr, 10, 64); err == nil {
-				dbID = parsed
-			}
+		s.mu.Lock()
+		
+		// Check if we've moved to a new timestamp
+		if !event.Timestamp.Equal(s.currentTimestamp) {
+			// Clear processed IDs for new timestamp
+			s.processedEventIDs = make(map[string]struct{})
+			s.currentTimestamp = event.Timestamp
 		}
-
-		// Remove internal metadata before sending to channel
-		eventCopy := event
-		if eventCopy.Metadata != nil {
-			eventCopy.Metadata = make(map[string]string)
-			for k, v := range event.Metadata {
-				if k != "_db_id" {
-					eventCopy.Metadata[k] = v
-				}
-			}
+		
+		// Skip if we've already processed this Event.ID within the current timestamp
+		if _, processed := s.processedEventIDs[event.ID]; processed {
+			s.mu.Unlock()
+			continue
 		}
+		
+		// Mark Event.ID as processed
+		s.processedEventIDs[event.ID] = struct{}{}
+		s.fromTimestamp = event.Timestamp
+		s.mu.Unlock()
 
 		select {
-		case s.eventsCh <- eventCopy:
-			s.mu.Lock()
-			s.fromTimestamp = event.Timestamp
-			if dbID > 0 {
-				s.lastEventID = dbID
-			}
-			s.mu.Unlock()
+		case s.eventsCh <- event:
 		case <-s.closeCh:
 			return
 		}
 	}
 }
 
-// pollForEvents polls the database for new events using ID-based filtering to avoid duplicates.
+// pollForEvents polls the database for new events using timestamp-based filtering.
 func (s *PostgresSubscription) pollForEvents() {
 	// Safety check - don't try to poll if store or db is nil
 	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
@@ -247,8 +225,11 @@ func (s *PostgresSubscription) pollForEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	// Use ID-based filtering for polling to avoid duplicates
-	events, err := s.store.loadEventsByID(s.lastEventID, batchSize)
+	// Use timestamp-based filtering for polling (including equal timestamps for duplicates)
+	events, err := s.store.loadEventsByTimestamp(eventstore.ConsumeOptions{
+		FromTimestamp: s.fromTimestamp,
+		BatchSize:     batchSize,
+	})
 	s.mu.Unlock()
 
 	if err != nil {
@@ -260,33 +241,28 @@ func (s *PostgresSubscription) pollForEvents() {
 	}
 
 	for _, event := range events {
-		// Extract database ID before sending event to channel
-		var dbID int64
-		if eventIDStr, ok := event.Metadata["_db_id"]; ok {
-			if parsed, err := strconv.ParseInt(eventIDStr, 10, 64); err == nil {
-				dbID = parsed
-			}
+		s.mu.Lock()
+		
+		// Check if we've moved to a new timestamp
+		if !event.Timestamp.Equal(s.currentTimestamp) {
+			// Clear processed IDs for new timestamp
+			s.processedEventIDs = make(map[string]struct{})
+			s.currentTimestamp = event.Timestamp
 		}
-
-		// Remove internal metadata before sending to channel
-		eventCopy := event
-		if eventCopy.Metadata != nil {
-			eventCopy.Metadata = make(map[string]string)
-			for k, v := range event.Metadata {
-				if k != "_db_id" {
-					eventCopy.Metadata[k] = v
-				}
-			}
+		
+		// Skip if we've already processed this Event.ID within the current timestamp
+		if _, processed := s.processedEventIDs[event.ID]; processed {
+			s.mu.Unlock()
+			continue
 		}
+		
+		// Mark Event.ID as processed
+		s.processedEventIDs[event.ID] = struct{}{}
+		s.fromTimestamp = event.Timestamp
+		s.mu.Unlock()
 
 		select {
-		case s.eventsCh <- eventCopy:
-			s.mu.Lock()
-			s.fromTimestamp = event.Timestamp
-			if dbID > 0 {
-				s.lastEventID = dbID
-			}
-			s.mu.Unlock()
+		case s.eventsCh <- event:
 		case <-s.closeCh:
 			return
 		}
