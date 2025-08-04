@@ -22,13 +22,13 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time
 	if tableName == "" {
 		tableName = "events"
 	}
-	
+
 	if pollingInterval <= 0 {
 		pollingInterval = 1 * time.Second
 	}
 
 	return &PostgresEventConsumer{
-		pgClient:      &pgClient{
+		pgClient: &pgClient{
 			db:        db,
 			tableName: tableName,
 		},

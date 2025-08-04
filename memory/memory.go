@@ -112,7 +112,7 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 	defer s.mu.RUnlock()
 
 	var result []eventstore.Event
-	
+
 	// Collect events from all streams
 	for _, stream := range s.streams {
 		for _, event := range stream {
@@ -122,7 +122,7 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 			}
 		}
 	}
-	
+
 	// Sort events by timestamp (to maintain order across streams)
 	// Simple bubble sort for now (could be optimized later)
 	for i := 0; i < len(result); i++ {
@@ -132,7 +132,7 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 			}
 		}
 	}
-	
+
 	// Apply batch size limit
 	if opts.BatchSize > 0 && len(result) > opts.BatchSize {
 		result = result[:opts.BatchSize]

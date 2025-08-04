@@ -28,4 +28,3 @@ type EventConsumer interface {
 	// Subscribe creates a subscription to all streams for continuous event consumption
 	Subscribe(opts ConsumeOptions) (EventSubscription, error)
 }
-

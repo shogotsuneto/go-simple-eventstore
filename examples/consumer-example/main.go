@@ -113,7 +113,7 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 	// Add more events after a small delay
 	time.Sleep(100 * time.Millisecond)
 	startTime := time.Now()
-	
+
 	userEmailChangedData, _ := json.Marshal(UserEmailChanged{
 		UserID:   "user-456",
 		NewEmail: "jane.doe@example.com",
@@ -265,7 +265,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 	// Demonstrate subscription from a specific timestamp
 	fmt.Println("\nCreating subscription from a specific timestamp...")
 	startTime := time.Now()
-	
+
 	subscription2, err := store.Subscribe(eventstore.ConsumeOptions{
 		FromTimestamp: startTime, // Start from now, should only get new events
 		BatchSize:     10,
@@ -290,7 +290,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 
 	// Add a new event after the second subscription
 	time.Sleep(100 * time.Millisecond)
-	
+
 	finalEventData, _ := json.Marshal(UserEmailChanged{
 		UserID:   "user-890",
 		NewEmail: "bob.johnson@example.com",

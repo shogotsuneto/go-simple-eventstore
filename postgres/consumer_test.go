@@ -190,13 +190,13 @@ func TestNewPostgresEventConsumer_PollingInterval(t *testing.T) {
 	// Test that NewPostgresEventConsumer correctly sets polling interval
 	customInterval := 3 * time.Second
 	consumer := NewPostgresEventConsumer(nil, "events", customInterval)
-	
+
 	pgConsumer, ok := consumer.(*PostgresEventConsumer)
 	if !ok {
 		t.Error("Expected PostgresEventConsumer type")
 		return
 	}
-	
+
 	if pgConsumer.pollingInterval != customInterval {
 		t.Errorf("Expected polling interval %v, got %v", customInterval, pgConsumer.pollingInterval)
 	}
@@ -205,13 +205,13 @@ func TestNewPostgresEventConsumer_PollingInterval(t *testing.T) {
 func TestNewPostgresEventConsumer_DefaultPollingInterval(t *testing.T) {
 	// Test that NewPostgresEventConsumer uses default when interval is 0
 	consumer := NewPostgresEventConsumer(nil, "events", 0)
-	
+
 	pgConsumer, ok := consumer.(*PostgresEventConsumer)
 	if !ok {
 		t.Error("Expected PostgresEventConsumer type")
 		return
 	}
-	
+
 	expectedDefault := 1 * time.Second
 	if pgConsumer.pollingInterval != expectedDefault {
 		t.Errorf("Expected default polling interval %v, got %v", expectedDefault, pgConsumer.pollingInterval)

@@ -46,6 +46,44 @@ type EventSubscription interface {
 }
 ```
 
+## ⚙️ Configuration Options
+
+### LoadOptions
+
+Used when loading events from a specific stream via `EventStore.Load()`:
+
+```go
+type LoadOptions struct {
+    // AfterVersion specifies the version after which to start loading events
+    // - Use 0 to load from the beginning of the stream
+    // - Use a specific version to load events after that version
+    AfterVersion int64
+    
+    // Limit specifies the maximum number of events to return
+    // - Use 0 for no limit (load all available events)
+    // - Use positive integer to limit the batch size
+    Limit int
+}
+```
+
+### ConsumeOptions
+
+Used when consuming events from all streams in a table via `EventConsumer.Retrieve()` and `EventConsumer.Subscribe()`:
+
+```go
+type ConsumeOptions struct {
+    // FromTimestamp specifies where to start consuming events from
+    // - Events with timestamps equal to or after this time will be included
+    // - Use time.Time{} to start from the earliest available events
+    FromTimestamp time.Time
+    
+    // BatchSize specifies the maximum number of events to return in each batch
+    // - For Retrieve(): maximum events returned per call
+    // - For Subscribe(): maximum events delivered per notification
+    BatchSize int
+}
+```
+
 ## 🔌 Backend Adapters
 
 ### Implemented
