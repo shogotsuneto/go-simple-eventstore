@@ -59,7 +59,10 @@ func main() {
 	}
 
 	// Create PostgreSQL event store
-	store = postgres.NewPostgresEventStore(db, *tableName)
+	store, err = postgres.NewPostgresEventStore(db, *tableName)
+	if err != nil {
+		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
 
 	fmt.Println("✅ PostgreSQL event store ready")
 

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sync"
 	"time"
 
@@ -19,9 +20,9 @@ type PostgresEventConsumer struct {
 
 // NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection, table name, and polling interval.
 // tableName must not be empty.
-func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) eventstore.EventConsumer {
+func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
 	if tableName == "" {
-		panic("table name must not be empty")
+		return nil, fmt.Errorf("table name must not be empty")
 	}
 
 	if pollingInterval <= 0 {
@@ -35,7 +36,7 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time
 		},
 		subscriptions:   []*PostgresSubscription{}, // Changed to a single slice
 		pollingInterval: pollingInterval,
-	}
+	}, nil
 }
 
 // Retrieve retrieves events from all streams in a retrieval operation.

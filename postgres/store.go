@@ -16,9 +16,9 @@ type PostgresEventStore struct {
 
 // NewPostgresEventStore creates a new PostgreSQL event store with the given database connection and table name.
 // tableName must not be empty.
-func NewPostgresEventStore(db *sql.DB, tableName string) eventstore.EventStore {
+func NewPostgresEventStore(db *sql.DB, tableName string) (eventstore.EventStore, error) {
 	if tableName == "" {
-		panic("table name must not be empty")
+		return nil, fmt.Errorf("table name must not be empty")
 	}
 
 	return &PostgresEventStore{
@@ -26,7 +26,7 @@ func NewPostgresEventStore(db *sql.DB, tableName string) eventstore.EventStore {
 			db:        db,
 			tableName: tableName,
 		},
-	}
+	}, nil
 }
 
 // Append adds new events to the given stream.

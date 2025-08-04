@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"testing"
+	"time"
 )
 
 func TestQuoteIdentifier(t *testing.T) {
@@ -98,6 +99,38 @@ func TestInitSchema_EmptyTableName(t *testing.T) {
 	err := InitSchema(nil, "")
 	if err == nil {
 		t.Error("InitSchema should return error for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+}
+
+func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
+	// Test that NewPostgresEventStore returns an error for empty table names
+	store, err := NewPostgresEventStore(nil, "")
+	if err == nil {
+		t.Error("NewPostgresEventStore should return error for empty table name")
+	}
+	if store != nil {
+		t.Error("NewPostgresEventStore should return nil store for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+}
+
+func TestNewPostgresEventConsumer_EmptyTableName(t *testing.T) {
+	// Test that NewPostgresEventConsumer returns an error for empty table names
+	consumer, err := NewPostgresEventConsumer(nil, "", 1*time.Second)
+	if err == nil {
+		t.Error("NewPostgresEventConsumer should return error for empty table name")
+	}
+	if consumer != nil {
+		t.Error("NewPostgresEventConsumer should return nil consumer for empty table name")
 	}
 	
 	expectedError := "table name must not be empty"

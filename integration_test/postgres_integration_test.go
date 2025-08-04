@@ -41,7 +41,10 @@ func setupTestStore(t *testing.T, tableName string) (eventstore.EventStore, *sql
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	store := postgres.NewPostgresEventStore(db, tableName)
+	store, err := postgres.NewPostgresEventStore(db, tableName)
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
 	return store, db
 }
 
