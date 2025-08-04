@@ -32,8 +32,14 @@ func setupTestConsumerWithTableName(t *testing.T, tableName string, pollingInter
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	store := postgres.NewPostgresEventStore(db, tableName)
-	consumer := postgres.NewPostgresEventConsumer(db, tableName, pollingInterval)
+	store, err := postgres.NewPostgresEventStore(db, tableName)
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+	}
+	consumer, err := postgres.NewPostgresEventConsumer(db, tableName, pollingInterval)
+	if err != nil {
+		t.Fatalf("Failed to create PostgreSQL event consumer: %v", err)
+	}
 	return consumer, store, db
 }
 

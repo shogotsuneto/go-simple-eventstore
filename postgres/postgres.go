@@ -12,9 +12,10 @@ import (
 
 // InitSchema creates the necessary tables and indexes if they don't exist.
 // It takes a database connection and table name to initialize the schema.
+// tableName must not be empty.
 func InitSchema(db *sql.DB, tableName string) error {
 	if tableName == "" {
-		tableName = "events"
+		return fmt.Errorf("table name must not be empty")
 	}
 
 	quotedTableName := quoteIdentifier(tableName)
@@ -46,7 +47,7 @@ func InitSchema(db *sql.DB, tableName string) error {
 type Config struct {
 	// ConnectionString is the PostgreSQL connection string
 	ConnectionString string
-	// TableName is the name of the table to store events. Defaults to "events" if empty.
+	// TableName is the name of the table to store events. Must not be empty.
 	TableName string
 }
 
@@ -69,7 +70,7 @@ func newPgClient(config Config) (*pgClient, error) {
 
 	tableName := config.TableName
 	if tableName == "" {
-		tableName = "events"
+		return nil, fmt.Errorf("table name must not be empty")
 	}
 
 	return &pgClient{
