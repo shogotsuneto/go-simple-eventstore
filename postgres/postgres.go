@@ -88,22 +88,57 @@ func quoteIdentifier(identifier string) string {
 	return `"` + escaped + `"`
 }
 
+// buildLoadQuery constructs the SQL query and arguments for loading events.
+func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) (string, []interface{}) {
+	var args []interface{}
+	
+	// SELECT clause
+	selectClause := "SELECT event_id, event_type, event_data, metadata, timestamp, version"
+	
+	// FROM clause  
+	fromClause := fmt.Sprintf("FROM %s", quoteIdentifier(p.tableName))
+	
+	// WHERE clause
+	var whereClause string
+	if opts.Desc {
+		// In reverse loading: if ExclusiveStartVersion is 0, include all events
+		// Otherwise, include events with version < ExclusiveStartVersion
+		if opts.ExclusiveStartVersion == 0 {
+			whereClause = "WHERE stream_id = $1"
+			args = []interface{}{streamID}
+		} else {
+			whereClause = "WHERE stream_id = $1 AND version < $2"
+			args = []interface{}{streamID, opts.ExclusiveStartVersion}
+		}
+	} else {
+		whereClause = "WHERE stream_id = $1 AND version > $2"
+		args = []interface{}{streamID, opts.ExclusiveStartVersion}
+	}
+	
+	// ORDER BY clause
+	var orderClause string
+	if opts.Desc {
+		orderClause = "ORDER BY version DESC"
+	} else {
+		orderClause = "ORDER BY version ASC"
+	}
+	
+	// Build the main query
+	query := fmt.Sprintf("%s\n%s\n%s\n%s", selectClause, fromClause, whereClause, orderClause)
+	
+	// LIMIT clause
+	if opts.Limit > 0 {
+		query += fmt.Sprintf("\nLIMIT $%d", len(args)+1)
+		args = append(args, opts.Limit)
+	}
+
+	return query, args
+}
+
 // loadEvents retrieves events for the given stream using the specified options.
 // This is shared functionality used by both producer and consumer.
 func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
-	query := fmt.Sprintf(`
-		SELECT event_id, event_type, event_data, metadata, timestamp, version
-		FROM %s
-		WHERE stream_id = $1 AND version > $2
-		ORDER BY version ASC
-	`, quoteIdentifier(p.tableName))
-
-	args := []interface{}{streamID, opts.AfterVersion}
-
-	if opts.Limit > 0 {
-		query += " LIMIT $3"
-		args = append(args, opts.Limit)
-	}
+	query, args := p.buildLoadQuery(streamID, opts)
 
 	rows, err := p.db.Query(query, args...)
 	if err != nil {

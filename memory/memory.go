@@ -195,13 +195,30 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 		return []eventstore.Event{}, nil
 	}
 
-	// Find starting position
 	var result []eventstore.Event
-	for _, event := range stream {
-		if event.Version > opts.AfterVersion {
-			result = append(result, event)
-			if opts.Limit > 0 && len(result) >= opts.Limit {
-				break
+
+	if opts.Desc {
+		// Load events in descending order (from latest to oldest)
+		// Start from the end and work backwards
+		for i := len(stream) - 1; i >= 0; i-- {
+			event := stream[i]
+			// In reverse loading: if ExclusiveStartVersion is 0, include all events
+			// Otherwise, include events with version < ExclusiveStartVersion
+			if opts.ExclusiveStartVersion == 0 || event.Version < opts.ExclusiveStartVersion {
+				result = append(result, event)
+				if opts.Limit > 0 && len(result) >= opts.Limit {
+					break
+				}
+			}
+		}
+	} else {
+		// Load events in forward order (original behavior)
+		for _, event := range stream {
+			if event.Version > opts.ExclusiveStartVersion {
+				result = append(result, event)
+				if opts.Limit > 0 && len(result) >= opts.Limit {
+					break
+				}
 			}
 		}
 	}

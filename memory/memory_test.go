@@ -38,7 +38,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 	}
 
 	// Verify events were stored
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestInMemoryEventStore_Append(t *testing.T) {
 func TestInMemoryEventStore_Load_EmptyStream(t *testing.T) {
 	store := NewInMemoryEventStore()
 
-	events, err := store.Load("non-existent-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
+	events, err := store.Load("non-existent-stream", eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestInMemoryEventStore_Load_WithVersion(t *testing.T) {
 	}
 
 	// Load events starting from version 1 (should get events 2 and 3)
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 1, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{ExclusiveStartVersion: 1, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load with version failed: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestInMemoryEventStore_Load_WithLimit(t *testing.T) {
 	}
 
 	// Load only 2 events
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 2})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 2})
 	if err != nil {
 		t.Fatalf("Load with limit failed: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestInMemoryEventStore_AppendEmpty(t *testing.T) {
 		t.Fatalf("Append empty events failed: %v", err)
 	}
 
-	events, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
+	events, err := store.Load("test-stream", eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestInMemoryEventStore_PreservesEventData(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{AfterVersion: 0, Limit: 10})
+	loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 10})
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -724,4 +724,141 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 
 	// The subscription cleanup is already verified above by checking
 	// that the subscription was removed from the store
+}
+
+// Tests for reverse load functionality
+
+func TestInMemoryEventStore_Load_Desc(t *testing.T) {
+	store := NewInMemoryEventStore()
+
+	// Create test events
+	events := []eventstore.Event{
+		{
+			Type: "Event1",
+			Data: []byte(`{"test": "data1"}`),
+		},
+		{
+			Type: "Event2", 
+			Data: []byte(`{"test": "data2"}`),
+		},
+		{
+			Type: "Event3",
+			Data: []byte(`{"test": "data3"}`),
+		},
+		{
+			Type: "Event4",
+			Data: []byte(`{"test": "data4"}`),
+		},
+	}
+
+	// Append events to stream
+	err := store.Append("test-stream", events, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	t.Run("DescLoadAll", func(t *testing.T) {
+		// Load all events in descending order
+		loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{
+			ExclusiveStartVersion: 0,
+			Desc:                  true,
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 4 {
+			t.Fatalf("Expected 4 events, got %d", len(loadedEvents))
+		}
+
+		// Verify events are in descending order (latest first)
+		expectedTypes := []string{"Event4", "Event3", "Event2", "Event1"}
+		expectedVersions := []int64{4, 3, 2, 1}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("DescLoadWithLimit", func(t *testing.T) {
+		// Load latest 2 events in descending order
+		loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{
+			ExclusiveStartVersion: 0,
+			Limit:                 2,
+			Desc:                  true,
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 2 {
+			t.Fatalf("Expected 2 events, got %d", len(loadedEvents))
+		}
+
+		// Should get the latest 2 events (Event4, Event3)
+		expectedTypes := []string{"Event4", "Event3"}
+		expectedVersions := []int64{4, 3}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("DescLoadWithExclusiveStartVersion", func(t *testing.T) {
+		// Load events before version 3 in descending order (should get Event2, Event1)
+		loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{
+			ExclusiveStartVersion: 3,
+			Desc:                  true,
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 2 {
+			t.Fatalf("Expected 2 events, got %d", len(loadedEvents))
+		}
+
+		// Should get Event2, Event1 (versions 2, 1) in descending order
+		expectedTypes := []string{"Event2", "Event1"}
+		expectedVersions := []int64{2, 1}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("DefaultBehaviorIsForward", func(t *testing.T) {
+		// Verify that default behavior (Desc field not set) is forward loading
+		loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{
+			ExclusiveStartVersion: 0,
+			// Desc field omitted, should default to false
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 4 {
+			t.Fatalf("Expected 4 events, got %d", len(loadedEvents))
+		}
+
+		// Should be in forward order
+		if loadedEvents[0].Type != "Event1" || loadedEvents[3].Type != "Event4" {
+			t.Errorf("Default behavior should load in forward order")
+		}
+	})
 }
