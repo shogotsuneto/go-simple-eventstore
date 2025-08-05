@@ -88,9 +88,8 @@ func quoteIdentifier(identifier string) string {
 	return `"` + escaped + `"`
 }
 
-// loadEvents retrieves events for the given stream using the specified options.
-// This is shared functionality used by both producer and consumer.
-func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
+// buildLoadQuery constructs the SQL query and arguments for loading events.
+func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) (string, []interface{}) {
 	var orderClause string
 	var whereClause string
 	var args []interface{}
@@ -123,6 +122,14 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
 		args = append(args, opts.Limit)
 	}
+
+	return query, args
+}
+
+// loadEvents retrieves events for the given stream using the specified options.
+// This is shared functionality used by both producer and consumer.
+func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
+	query, args := p.buildLoadQuery(streamID, opts)
 
 	rows, err := p.db.Query(query, args...)
 	if err != nil {

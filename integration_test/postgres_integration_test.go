@@ -618,7 +618,7 @@ func TestPostgresEventStore_Load_Desc(t *testing.T) {
 		},
 	}
 
-	streamID := "test-stream-desc"
+	streamID := fmt.Sprintf("test-stream-desc-%d", time.Now().UnixNano())
 	
 	// Append events to stream
 	err := store.Append(streamID, events, -1)

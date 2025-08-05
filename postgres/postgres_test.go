@@ -1,8 +1,11 @@
 package postgres
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
 func TestQuoteIdentifier(t *testing.T) {
@@ -166,4 +169,108 @@ func TestLoadEvents_QueryGeneration(t *testing.T) {
 			t.Error("Test setup failed")
 		}
 	})
+}
+
+func TestBuildLoadQuery(t *testing.T) {
+	client := &pgClient{
+		tableName: "test_events",
+	}
+
+	tests := []struct {
+		name         string
+		streamID     string
+		opts         eventstore.LoadOptions
+		expectedSQL  []string // Parts that should be in the SQL
+		expectedArgs []interface{}
+	}{
+		{
+			name:     "forward loading with ExclusiveStartVersion",
+			streamID: "stream-1",
+			opts: eventstore.LoadOptions{
+				ExclusiveStartVersion: 10,
+				Limit:                 5,
+				Desc:                  false,
+			},
+			expectedSQL:  []string{"ORDER BY version ASC", "WHERE stream_id = $1 AND version > $2", "LIMIT $3"},
+			expectedArgs: []interface{}{"stream-1", int64(10), 5},
+		},
+		{
+			name:     "descending loading with ExclusiveStartVersion 0",
+			streamID: "stream-2",
+			opts: eventstore.LoadOptions{
+				ExclusiveStartVersion: 0,
+				Limit:                 10,
+				Desc:                  true,
+			},
+			expectedSQL:  []string{"ORDER BY version DESC", "WHERE stream_id = $1", "LIMIT $2"},
+			expectedArgs: []interface{}{"stream-2", 10},
+		},
+		{
+			name:     "descending loading with ExclusiveStartVersion > 0",
+			streamID: "stream-3",
+			opts: eventstore.LoadOptions{
+				ExclusiveStartVersion: 50,
+				Limit:                 20,
+				Desc:                  true,
+			},
+			expectedSQL:  []string{"ORDER BY version DESC", "WHERE stream_id = $1 AND version < $2", "LIMIT $3"},
+			expectedArgs: []interface{}{"stream-3", int64(50), 20},
+		},
+		{
+			name:     "forward loading without limit",
+			streamID: "stream-4",
+			opts: eventstore.LoadOptions{
+				ExclusiveStartVersion: 5,
+				Desc:                  false,
+			},
+			expectedSQL:  []string{"ORDER BY version ASC", "WHERE stream_id = $1 AND version > $2"},
+			expectedArgs: []interface{}{"stream-4", int64(5)},
+		},
+		{
+			name:     "descending loading without limit",
+			streamID: "stream-5",
+			opts: eventstore.LoadOptions{
+				ExclusiveStartVersion: 0,
+				Desc:                  true,
+			},
+			expectedSQL:  []string{"ORDER BY version DESC", "WHERE stream_id = $1"},
+			expectedArgs: []interface{}{"stream-5"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			query, args := client.buildLoadQuery(tt.streamID, tt.opts)
+
+			// Check that all expected SQL parts are present
+			for _, expectedPart := range tt.expectedSQL {
+				if !strings.Contains(query, expectedPart) {
+					t.Errorf("Expected query to contain %q, but got: %s", expectedPart, query)
+				}
+			}
+
+			// Check that arguments match
+			if len(args) != len(tt.expectedArgs) {
+				t.Errorf("Expected %d arguments, got %d: %v", len(tt.expectedArgs), len(args), args)
+				return
+			}
+
+			for i, expected := range tt.expectedArgs {
+				if args[i] != expected {
+					t.Errorf("Argument %d: expected %v, got %v", i, expected, args[i])
+				}
+			}
+
+			// Verify the table name is properly quoted in the query
+			expectedTableRef := `"test_events"`
+			if !strings.Contains(query, expectedTableRef) {
+				t.Errorf("Expected query to contain quoted table name %q, but got: %s", expectedTableRef, query)
+			}
+
+			// Verify the SELECT clause is present
+			if !strings.Contains(query, "SELECT event_id, event_type, event_data, metadata, timestamp, version") {
+				t.Errorf("Expected query to contain SELECT clause, but got: %s", query)
+			}
+		})
+	}
 }
