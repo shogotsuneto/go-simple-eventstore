@@ -29,6 +29,10 @@ type LoadOptions struct {
 	AfterVersion int64
 	// Limit specifies the maximum number of events to return
 	Limit int
+	// Reverse specifies whether to load events in reverse order (from latest to oldest)
+	// When true, loads events in descending order starting from the latest version
+	// When false (default), loads events in ascending order as before
+	Reverse bool
 }
 
 // EventStore defines the core interface for event storage.

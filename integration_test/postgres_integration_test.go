@@ -592,3 +592,170 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 		t.Errorf("Expected event type 'TestEvent', got '%s'", loadedEvents[0].Type)
 	}
 }
+
+func TestPostgresEventStore_Load_Reverse(t *testing.T) {
+	tableName := "test_events_reverse"
+	store, db := setupTestStore(t, tableName)
+	defer db.Close()
+
+	// Create test events
+	events := []eventstore.Event{
+		{
+			Type: "Event1",
+			Data: []byte(`{"test": "data1"}`),
+		},
+		{
+			Type: "Event2",
+			Data: []byte(`{"test": "data2"}`),
+		},
+		{
+			Type: "Event3",
+			Data: []byte(`{"test": "data3"}`),
+		},
+		{
+			Type: "Event4",
+			Data: []byte(`{"test": "data4"}`),
+		},
+	}
+
+	streamID := "test-stream-reverse"
+	
+	// Append events to stream
+	err := store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	t.Run("ReverseLoadAll", func(t *testing.T) {
+		// Load all events in reverse order
+		loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{
+			AfterVersion: 0,
+			Reverse:      true,
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 4 {
+			t.Fatalf("Expected 4 events, got %d", len(loadedEvents))
+		}
+
+		// Verify events are in reverse order (latest first)
+		expectedTypes := []string{"Event4", "Event3", "Event2", "Event1"}
+		expectedVersions := []int64{4, 3, 2, 1}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("ReverseLoadWithLimit", func(t *testing.T) {
+		// Load latest 2 events in reverse order
+		loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{
+			AfterVersion: 0,
+			Limit:        2,
+			Reverse:      true,
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 2 {
+			t.Fatalf("Expected 2 events, got %d", len(loadedEvents))
+		}
+
+		// Should get the latest 2 events (Event4, Event3)
+		expectedTypes := []string{"Event4", "Event3"}
+		expectedVersions := []int64{4, 3}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("ReverseLoadWithAfterVersion", func(t *testing.T) {
+		// Load events after version 2 in reverse order (should get Event4, Event3)
+		loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{
+			AfterVersion: 2,
+			Reverse:      true,
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 2 {
+			t.Fatalf("Expected 2 events, got %d", len(loadedEvents))
+		}
+
+		// Should get Event4, Event3 (versions 4, 3)
+		expectedTypes := []string{"Event4", "Event3"}
+		expectedVersions := []int64{4, 3}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("ForwardLoadStillWorks", func(t *testing.T) {
+		// Verify that forward loading (original behavior) still works
+		loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{
+			AfterVersion: 0,
+			Reverse:      false, // Explicitly set to false
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 4 {
+			t.Fatalf("Expected 4 events, got %d", len(loadedEvents))
+		}
+
+		// Verify events are in forward order (oldest first)
+		expectedTypes := []string{"Event1", "Event2", "Event3", "Event4"}
+		expectedVersions := []int64{1, 2, 3, 4}
+
+		for i, event := range loadedEvents {
+			if event.Type != expectedTypes[i] {
+				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
+			}
+			if event.Version != expectedVersions[i] {
+				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
+			}
+		}
+	})
+
+	t.Run("DefaultBehaviorIsForward", func(t *testing.T) {
+		// Verify that default behavior (Reverse field not set) is forward loading
+		loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{
+			AfterVersion: 0,
+			// Reverse field omitted, should default to false
+		})
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		if len(loadedEvents) != 4 {
+			t.Fatalf("Expected 4 events, got %d", len(loadedEvents))
+		}
+
+		// Should be in forward order
+		if loadedEvents[0].Type != "Event1" || loadedEvents[3].Type != "Event4" {
+			t.Errorf("Default behavior should load in forward order")
+		}
+	})
+}

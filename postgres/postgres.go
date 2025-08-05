@@ -91,12 +91,19 @@ func quoteIdentifier(identifier string) string {
 // loadEvents retrieves events for the given stream using the specified options.
 // This is shared functionality used by both producer and consumer.
 func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
+	var orderClause string
+	if opts.Reverse {
+		orderClause = "ORDER BY version DESC"
+	} else {
+		orderClause = "ORDER BY version ASC"
+	}
+
 	query := fmt.Sprintf(`
 		SELECT event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s
 		WHERE stream_id = $1 AND version > $2
-		ORDER BY version ASC
-	`, quoteIdentifier(p.tableName))
+		%s
+	`, quoteIdentifier(p.tableName), orderClause)
 
 	args := []interface{}{streamID, opts.AfterVersion}
 
