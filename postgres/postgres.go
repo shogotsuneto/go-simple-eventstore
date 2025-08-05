@@ -92,23 +92,35 @@ func quoteIdentifier(identifier string) string {
 // This is shared functionality used by both producer and consumer.
 func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]eventstore.Event, error) {
 	var orderClause string
-	if opts.Reverse {
+	var whereClause string
+	var args []interface{}
+	
+	if opts.Desc {
 		orderClause = "ORDER BY version DESC"
+		// In reverse loading: if ExclusiveStartVersion is 0, include all events
+		// Otherwise, include events with version < ExclusiveStartVersion
+		if opts.ExclusiveStartVersion == 0 {
+			whereClause = "WHERE stream_id = $1"
+			args = []interface{}{streamID}
+		} else {
+			whereClause = "WHERE stream_id = $1 AND version < $2"
+			args = []interface{}{streamID, opts.ExclusiveStartVersion}
+		}
 	} else {
 		orderClause = "ORDER BY version ASC"
+		whereClause = "WHERE stream_id = $1 AND version > $2"
+		args = []interface{}{streamID, opts.ExclusiveStartVersion}
 	}
 
 	query := fmt.Sprintf(`
 		SELECT event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s
-		WHERE stream_id = $1 AND version > $2
 		%s
-	`, quoteIdentifier(p.tableName), orderClause)
-
-	args := []interface{}{streamID, opts.AfterVersion}
+		%s
+	`, quoteIdentifier(p.tableName), whereClause, orderClause)
 
 	if opts.Limit > 0 {
-		query += " LIMIT $3"
+		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
 		args = append(args, opts.Limit)
 	}
 

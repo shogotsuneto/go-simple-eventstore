@@ -25,14 +25,16 @@ type Event struct {
 
 // LoadOptions contains options for loading events from a stream.
 type LoadOptions struct {
-	// AfterVersion specifies the version after which to start loading events
-	AfterVersion int64
+	// ExclusiveStartVersion specifies the version to use as exclusive starting point for loading events
+	// In forward loading (Desc=false): gets events with version > ExclusiveStartVersion
+	// In reverse loading (Desc=true): gets events with version < ExclusiveStartVersion (or all if 0)
+	ExclusiveStartVersion int64
 	// Limit specifies the maximum number of events to return
 	Limit int
-	// Reverse specifies whether to load events in reverse order (from latest to oldest)
+	// Desc specifies whether to load events in descending order (from latest to oldest)
 	// When true, loads events in descending order starting from the latest version
 	// When false (default), loads events in ascending order as before
-	Reverse bool
+	Desc bool
 }
 
 // EventStore defines the core interface for event storage.
