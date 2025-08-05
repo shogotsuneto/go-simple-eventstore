@@ -54,15 +54,20 @@ Used when loading events from a specific stream via `EventStore.Load()`:
 
 ```go
 type LoadOptions struct {
-    // AfterVersion specifies the version after which to start loading events
-    // - Use 0 to load from the beginning of the stream
-    // - Use a specific version to load events after that version
-    AfterVersion int64
+    // ExclusiveStartVersion specifies the version to use as exclusive starting point for loading events
+    // - In forward loading (Desc=false): gets events with version > ExclusiveStartVersion
+    // - In reverse loading (Desc=true): gets events with version < ExclusiveStartVersion (or all if 0)
+    ExclusiveStartVersion int64
     
     // Limit specifies the maximum number of events to return
     // - Use 0 for no limit (load all available events)
     // - Use positive integer to limit the batch size
     Limit int
+    
+    // Desc specifies whether to load events in descending order (from latest to oldest)
+    // - When true, loads events in descending order starting from the latest version
+    // - When false (default), loads events in ascending order
+    Desc bool
 }
 ```
 
@@ -125,10 +130,20 @@ func main() {
         panic(err)
     }
     
-    // Load events from the stream
+    // Load events from the stream (forward order - default behavior)
     loadedEvents, err := store.Load("user-123", eventstore.LoadOptions{
-        AfterVersion: 0,
+        ExclusiveStartVersion: 0,
         Limit: 10,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
+    // Load latest events in descending order (newest first)
+    latestEvents, err := store.Load("user-123", eventstore.LoadOptions{
+        ExclusiveStartVersion: 0,
+        Limit: 5,    // Get latest 5 events
+        Desc: true,
     })
     if err != nil {
         panic(err)
