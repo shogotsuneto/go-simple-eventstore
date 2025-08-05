@@ -842,34 +842,6 @@ func TestInMemoryEventStore_Load_Desc(t *testing.T) {
 		}
 	})
 
-	t.Run("ForwardLoadStillWorks", func(t *testing.T) {
-		// Verify that forward loading (original behavior) still works
-		loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{
-			ExclusiveStartVersion: 0,
-			Desc:                  false, // Explicitly set to false
-		})
-		if err != nil {
-			t.Fatalf("Load failed: %v", err)
-		}
-
-		if len(loadedEvents) != 4 {
-			t.Fatalf("Expected 4 events, got %d", len(loadedEvents))
-		}
-
-		// Verify events are in forward order (oldest first)
-		expectedTypes := []string{"Event1", "Event2", "Event3", "Event4"}
-		expectedVersions := []int64{1, 2, 3, 4}
-
-		for i, event := range loadedEvents {
-			if event.Type != expectedTypes[i] {
-				t.Errorf("Event %d: expected type %s, got %s", i, expectedTypes[i], event.Type)
-			}
-			if event.Version != expectedVersions[i] {
-				t.Errorf("Event %d: expected version %d, got %d", i, expectedVersions[i], event.Version)
-			}
-		}
-	})
-
 	t.Run("DefaultBehaviorIsForward", func(t *testing.T) {
 		// Verify that default behavior (Desc field not set) is forward loading
 		loadedEvents, err := store.Load("test-stream", eventstore.LoadOptions{
