@@ -54,20 +54,20 @@ Used when loading events from a specific stream via `EventStore.Load()`:
 
 ```go
 type LoadOptions struct {
-    // AfterVersion specifies the version after which to start loading events
-    // - Use 0 to load from the beginning of the stream
-    // - Use a specific version to load events after that version
-    AfterVersion int64
+    // ExclusiveStartVersion specifies the version to use as exclusive starting point for loading events
+    // - In forward loading (Desc=false): gets events with version > ExclusiveStartVersion
+    // - In reverse loading (Desc=true): gets events with version < ExclusiveStartVersion (or all if 0)
+    ExclusiveStartVersion int64
     
     // Limit specifies the maximum number of events to return
     // - Use 0 for no limit (load all available events)
     // - Use positive integer to limit the batch size
     Limit int
     
-    // Reverse specifies whether to load events in reverse order (from latest to oldest)
+    // Desc specifies whether to load events in descending order (from latest to oldest)
     // - When true, loads events in descending order starting from the latest version
     // - When false (default), loads events in ascending order as before
-    Reverse bool
+    Desc bool
 }
 ```
 
@@ -132,18 +132,18 @@ func main() {
     
     // Load events from the stream (forward order - default behavior)
     loadedEvents, err := store.Load("user-123", eventstore.LoadOptions{
-        AfterVersion: 0,
+        ExclusiveStartVersion: 0,
         Limit: 10,
     })
     if err != nil {
         panic(err)
     }
     
-    // Load latest events in reverse order (newest first)
+    // Load latest events in descending order (newest first)
     latestEvents, err := store.Load("user-123", eventstore.LoadOptions{
-        AfterVersion: 0,
+        ExclusiveStartVersion: 0,
         Limit: 5,    // Get latest 5 events
-        Reverse: true,
+        Desc: true,
     })
     if err != nil {
         panic(err)
@@ -153,37 +153,38 @@ func main() {
 }
 ```
 
-### Reverse Loading (Latest Events First)
+### Descending Loading (Latest Events First)
 
-The library supports loading events in reverse order, which is useful for scenarios like loading the latest N events or implementing features that need to work backwards from the most recent state:
+The library supports loading events in descending order, which is useful for scenarios like loading the latest N events or implementing features that need to work backwards from the most recent state:
 
 ```go
 // Load the latest 100 events from a stream (useful for snapshots)
 latestEvents, err := store.Load("user-123", eventstore.LoadOptions{
-    AfterVersion: 0,
+    ExclusiveStartVersion: 0,  // 0 means include all events when Desc=true
     Limit: 100,
-    Reverse: true,  // Load from newest to oldest
+    Desc: true,  // Load from newest to oldest
 })
 if err != nil {
     panic(err)
 }
 
-// Load events after a specific version in reverse order
+// Load events before a specific version in descending order
+// For example, load events with version < 50 in descending order
 recentEvents, err := store.Load("user-123", eventstore.LoadOptions{
-    AfterVersion: 50,  // Start after version 50
-    Limit: 10,         // Get 10 events
-    Reverse: true,     // In reverse order (versions 60, 59, 58, ...)
+    ExclusiveStartVersion: 50,  // Only events with version < 50
+    Limit: 10,                  // Get 10 events
+    Desc: true,                 // In descending order (versions 49, 48, 47, ...)
 })
 if err != nil {
     panic(err)
 }
 
-// The Reverse field is backward compatible - omitting it defaults to false
+// The Desc field is backward compatible - omitting it defaults to false
 // This maintains the original forward-loading behavior
 forwardEvents, err := store.Load("user-123", eventstore.LoadOptions{
-    AfterVersion: 0,
+    ExclusiveStartVersion: 0,  // Events with version > 0
     Limit: 10,
-    // Reverse: false is the default
+    // Desc: false is the default
 })
 ```
 
