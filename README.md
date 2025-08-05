@@ -63,6 +63,11 @@ type LoadOptions struct {
     // - Use 0 for no limit (load all available events)
     // - Use positive integer to limit the batch size
     Limit int
+    
+    // Reverse specifies whether to load events in reverse order (from latest to oldest)
+    // - When true, loads events in descending order starting from the latest version
+    // - When false (default), loads events in ascending order as before
+    Reverse bool
 }
 ```
 
@@ -125,7 +130,7 @@ func main() {
         panic(err)
     }
     
-    // Load events from the stream
+    // Load events from the stream (forward order - default behavior)
     loadedEvents, err := store.Load("user-123", eventstore.LoadOptions{
         AfterVersion: 0,
         Limit: 10,
@@ -134,8 +139,52 @@ func main() {
         panic(err)
     }
     
+    // Load latest events in reverse order (newest first)
+    latestEvents, err := store.Load("user-123", eventstore.LoadOptions{
+        AfterVersion: 0,
+        Limit: 5,    // Get latest 5 events
+        Reverse: true,
+    })
+    if err != nil {
+        panic(err)
+    }
+    
     // Process loaded events...
 }
+```
+
+### Reverse Loading (Latest Events First)
+
+The library supports loading events in reverse order, which is useful for scenarios like loading the latest N events or implementing features that need to work backwards from the most recent state:
+
+```go
+// Load the latest 100 events from a stream (useful for snapshots)
+latestEvents, err := store.Load("user-123", eventstore.LoadOptions{
+    AfterVersion: 0,
+    Limit: 100,
+    Reverse: true,  // Load from newest to oldest
+})
+if err != nil {
+    panic(err)
+}
+
+// Load events after a specific version in reverse order
+recentEvents, err := store.Load("user-123", eventstore.LoadOptions{
+    AfterVersion: 50,  // Start after version 50
+    Limit: 10,         // Get 10 events
+    Reverse: true,     // In reverse order (versions 60, 59, 58, ...)
+})
+if err != nil {
+    panic(err)
+}
+
+// The Reverse field is backward compatible - omitting it defaults to false
+// This maintains the original forward-loading behavior
+forwardEvents, err := store.Load("user-123", eventstore.LoadOptions{
+    AfterVersion: 0,
+    Limit: 10,
+    // Reverse: false is the default
+})
 ```
 
 ### Consuming Events with Retrieve
