@@ -66,7 +66,7 @@ type LoadOptions struct {
     
     // Desc specifies whether to load events in descending order (from latest to oldest)
     // - When true, loads events in descending order starting from the latest version
-    // - When false (default), loads events in ascending order as before
+    // - When false (default), loads events in ascending order
     Desc bool
 }
 ```
@@ -179,8 +179,6 @@ if err != nil {
     panic(err)
 }
 
-// The Desc field is backward compatible - omitting it defaults to false
-// This maintains the original forward-loading behavior
 forwardEvents, err := store.Load("user-123", eventstore.LoadOptions{
     ExclusiveStartVersion: 0,  // Events with version > 0
     Limit: 10,
