@@ -90,12 +90,17 @@ func quoteIdentifier(identifier string) string {
 
 // buildLoadQuery constructs the SQL query and arguments for loading events.
 func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) (string, []interface{}) {
-	var orderClause string
-	var whereClause string
 	var args []interface{}
 	
+	// SELECT clause
+	selectClause := "SELECT event_id, event_type, event_data, metadata, timestamp, version"
+	
+	// FROM clause  
+	fromClause := fmt.Sprintf("FROM %s", quoteIdentifier(p.tableName))
+	
+	// WHERE clause
+	var whereClause string
 	if opts.Desc {
-		orderClause = "ORDER BY version DESC"
 		// In reverse loading: if ExclusiveStartVersion is 0, include all events
 		// Otherwise, include events with version < ExclusiveStartVersion
 		if opts.ExclusiveStartVersion == 0 {
@@ -106,20 +111,24 @@ func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) 
 			args = []interface{}{streamID, opts.ExclusiveStartVersion}
 		}
 	} else {
-		orderClause = "ORDER BY version ASC"
 		whereClause = "WHERE stream_id = $1 AND version > $2"
 		args = []interface{}{streamID, opts.ExclusiveStartVersion}
 	}
-
-	query := fmt.Sprintf(`
-		SELECT event_id, event_type, event_data, metadata, timestamp, version
-		FROM %s
-		%s
-		%s
-	`, quoteIdentifier(p.tableName), whereClause, orderClause)
-
+	
+	// ORDER BY clause
+	var orderClause string
+	if opts.Desc {
+		orderClause = "ORDER BY version DESC"
+	} else {
+		orderClause = "ORDER BY version ASC"
+	}
+	
+	// Build the main query
+	query := fmt.Sprintf("%s\n%s\n%s\n%s", selectClause, fromClause, whereClause, orderClause)
+	
+	// LIMIT clause
 	if opts.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
+		query += fmt.Sprintf("\nLIMIT $%d", len(args)+1)
 		args = append(args, opts.Limit)
 	}
 
