@@ -61,6 +61,9 @@ run-hello-world: ## Run the hello-world example
 run-consumer-example: ## Run the consumer example
 	cd examples/consumer-example && go run main.go
 
+run-offset-example: ## Run the offset example
+	cd examples/offset-example && go run main.go
+
 run-postgres-example: start-postgres ## Run the PostgreSQL example
 	cd examples/postgres-example && \
 	TEST_DATABASE_URL="host=localhost port=5432 user=test password=test dbname=eventstore_test sslmode=disable" \
