@@ -22,7 +22,7 @@ type EventSubscription interface {
 }
 
 // EventConsumer defines the interface for consuming events from all streams in a table.
-// 
+//
 // Delivery Guarantees:
 // - Events are delivered in chronological order based on timestamp
 // - When multiple events have identical timestamps, delivery order is implementation-specific

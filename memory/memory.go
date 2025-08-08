@@ -25,8 +25,8 @@ type EventStoreConsumer interface {
 type InMemoryEventStore struct {
 	mu            sync.RWMutex
 	streams       map[string][]eventstore.Event
-	timeline      []eventstore.Event             // For cross-stream retrieval
-	subscriptions []*InMemorySubscription        // Global list of active subscriptions
+	timeline      []eventstore.Event      // For cross-stream retrieval
+	subscriptions []*InMemorySubscription // Global list of active subscriptions
 	subsMu        sync.RWMutex
 }
 
@@ -82,7 +82,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 			Version:   currentVersion + int64(i) + 1,
 		}
 		copy(eventCopy.Data, event.Data)
-		
+
 		// Copy metadata
 		if event.Metadata != nil {
 			eventCopy.Metadata = make(map[string]string)
@@ -90,14 +90,14 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 				eventCopy.Metadata[k] = v
 			}
 		}
-		
+
 		if eventCopy.Timestamp.IsZero() {
 			eventCopy.Timestamp = time.Now()
 		}
 		if eventCopy.ID == "" {
 			eventCopy.ID = fmt.Sprintf("%s-%d", streamID, eventCopy.Version)
 		}
-		
+
 		eventsToStore[i] = eventCopy
 	}
 
@@ -133,7 +133,7 @@ func (s *InMemoryEventStore) notifySubscriptions(events []eventstore.Event) {
 			sub.mu.Lock()
 			currentFromTimestamp := sub.fromTimestamp
 			sub.mu.Unlock()
-			
+
 			// Filter by timestamp - allow events with same timestamp or after
 			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
 				select {
@@ -161,7 +161,7 @@ func (s *InMemoryEventStore) notifySubscriptionsForExisting(subs []*InMemorySubs
 			sub.mu.Lock()
 			currentFromTimestamp := sub.fromTimestamp
 			sub.mu.Unlock()
-			
+
 			// Filter by timestamp - allow events with same timestamp or after
 			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
 				select {
@@ -285,7 +285,7 @@ func (s *InMemoryEventStore) insertEventInTimeline(event eventstore.Event) {
 	// For simplicity, we'll append and then sort if needed
 	// In a real implementation, you might use a more efficient insertion
 	s.timeline = append(s.timeline, event)
-	
+
 	// Simple insertion sort to maintain chronological order
 	for i := len(s.timeline) - 1; i > 0; i-- {
 		if s.timeline[i].Timestamp.Before(s.timeline[i-1].Timestamp) {
@@ -348,5 +348,3 @@ func (s *InMemorySubscription) Close() error {
 
 	return nil
 }
-
-
