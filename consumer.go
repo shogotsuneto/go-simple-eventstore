@@ -7,6 +7,10 @@ import "time"
 type ConsumeOptions struct {
 	// FromTimestamp specifies where to start consuming events from
 	FromTimestamp time.Time
+	// FromOffset specifies the table-level offset to start consuming events from
+	// Events with offset greater than this value will be included
+	// If both FromTimestamp and FromOffset are specified, FromOffset takes precedence
+	FromOffset int64
 	// BatchSize specifies the maximum number of events to return in each batch
 	BatchSize int
 }
