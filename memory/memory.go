@@ -152,7 +152,7 @@ func (s *InMemoryEventStore) notifySubscriptions(events []eventstore.Event) {
 			}
 			
 			if include {
-				select
+				select {
 				case sub.eventsCh <- event:
 					sub.mu.Lock()
 					if currentFromOffset > 0 {
@@ -194,7 +194,7 @@ func (s *InMemoryEventStore) notifySubscriptionsForExisting(subs []*InMemorySubs
 			}
 			
 			if include {
-				select
+				select {
 				case sub.eventsCh <- event:
 					sub.mu.Lock()
 					if currentFromOffset > 0 {
