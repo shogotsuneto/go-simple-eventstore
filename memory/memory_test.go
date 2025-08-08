@@ -738,7 +738,7 @@ func TestInMemoryEventStore_Load_Desc(t *testing.T) {
 			Data: []byte(`{"test": "data1"}`),
 		},
 		{
-			Type: "Event2", 
+			Type: "Event2",
 			Data: []byte(`{"test": "data2"}`),
 		},
 		{

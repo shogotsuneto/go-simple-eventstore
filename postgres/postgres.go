@@ -91,13 +91,13 @@ func quoteIdentifier(identifier string) string {
 // buildLoadQuery constructs the SQL query and arguments for loading events.
 func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) (string, []interface{}) {
 	var args []interface{}
-	
+
 	// SELECT clause
 	selectClause := "SELECT event_id, event_type, event_data, metadata, timestamp, version"
-	
-	// FROM clause  
+
+	// FROM clause
 	fromClause := fmt.Sprintf("FROM %s", quoteIdentifier(p.tableName))
-	
+
 	// WHERE clause
 	var whereClause string
 	if opts.Desc {
@@ -114,7 +114,7 @@ func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) 
 		whereClause = "WHERE stream_id = $1 AND version > $2"
 		args = []interface{}{streamID, opts.ExclusiveStartVersion}
 	}
-	
+
 	// ORDER BY clause
 	var orderClause string
 	if opts.Desc {
@@ -122,10 +122,10 @@ func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) 
 	} else {
 		orderClause = "ORDER BY version ASC"
 	}
-	
+
 	// Build the main query
 	query := fmt.Sprintf("%s\n%s\n%s\n%s", selectClause, fromClause, whereClause, orderClause)
-	
+
 	// LIMIT clause
 	if opts.Limit > 0 {
 		query += fmt.Sprintf("\nLIMIT $%d", len(args)+1)
@@ -181,7 +181,6 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 
 	return events, nil
 }
-
 
 // loadEventsByTimestamp retrieves events from all streams using timestamp-based filtering.
 func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
@@ -240,5 +239,3 @@ func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]even
 
 	return events, nil
 }
-
-
