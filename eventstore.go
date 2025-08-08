@@ -21,6 +21,8 @@ type Event struct {
 	Timestamp time.Time
 	// Version represents the position of this event in the stream
 	Version int64
+	// Offset represents the table-level sequence number for cross-stream ordering
+	Offset int64
 }
 
 // LoadOptions contains options for loading events from a stream.

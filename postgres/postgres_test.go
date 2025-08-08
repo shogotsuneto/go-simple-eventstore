@@ -239,7 +239,7 @@ func TestBuildLoadQuery(t *testing.T) {
 			}
 
 			// Verify the SELECT clause is present
-			if !strings.Contains(query, "SELECT event_id, event_type, event_data, metadata, timestamp, version") {
+			if !strings.Contains(query, "SELECT id, event_id, event_type, event_data, metadata, timestamp, version") {
 				t.Errorf("Expected query to contain SELECT clause, but got: %s", query)
 			}
 		})

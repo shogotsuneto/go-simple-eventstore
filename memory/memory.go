@@ -28,6 +28,7 @@ type InMemoryEventStore struct {
 	timeline      []eventstore.Event             // For cross-stream retrieval
 	subscriptions []*InMemorySubscription        // Global list of active subscriptions
 	subsMu        sync.RWMutex
+	nextOffset    int64                          // Global offset counter for table-level sequence
 }
 
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
@@ -36,6 +37,7 @@ func NewInMemoryEventStore() EventStoreConsumer {
 		streams:       make(map[string][]eventstore.Event),
 		timeline:      make([]eventstore.Event, 0),
 		subscriptions: make([]*InMemorySubscription, 0),
+		nextOffset:    1, // Start offset at 1 (similar to PostgreSQL SERIAL)
 	}
 }
 
@@ -69,7 +71,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 		}
 	}
 
-	// Set version and timestamp for each event
+	// Set version, timestamp, and offset for each event
 	// Make copies to avoid modifying the original events passed by the caller
 	eventsToStore := make([]eventstore.Event, len(events))
 	for i, event := range events {
@@ -80,6 +82,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 			Data:      make([]byte, len(event.Data)),
 			Timestamp: event.Timestamp,
 			Version:   currentVersion + int64(i) + 1,
+			Offset:    s.nextOffset + int64(i), // Assign table-level offset
 		}
 		copy(eventCopy.Data, event.Data)
 		
@@ -100,6 +103,9 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 		
 		eventsToStore[i] = eventCopy
 	}
+
+	// Increment the global offset counter
+	s.nextOffset += int64(len(events))
 
 	// Append events to stream
 	s.streams[streamID] = append(stream, eventsToStore...)
@@ -132,14 +138,28 @@ func (s *InMemoryEventStore) notifySubscriptions(events []eventstore.Event) {
 		for _, event := range events {
 			sub.mu.Lock()
 			currentFromTimestamp := sub.fromTimestamp
+			currentFromOffset := sub.fromOffset
 			sub.mu.Unlock()
 			
-			// Filter by timestamp - allow events with same timestamp or after
-			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
+			// Check if event should be included based on offset or timestamp
+			include := false
+			if currentFromOffset > 0 {
+				// Use offset-based filtering if specified
+				include = event.Offset > currentFromOffset
+			} else {
+				// Fall back to timestamp-based filtering
+				include = currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp)
+			}
+			
+			if include {
 				select {
 				case sub.eventsCh <- event:
 					sub.mu.Lock()
-					sub.fromTimestamp = event.Timestamp
+					if currentFromOffset > 0 {
+						sub.fromOffset = event.Offset
+					} else {
+						sub.fromTimestamp = event.Timestamp
+					}
 					sub.mu.Unlock()
 				case <-sub.closeCh:
 					// Subscription is closed, skip
@@ -160,14 +180,28 @@ func (s *InMemoryEventStore) notifySubscriptionsForExisting(subs []*InMemorySubs
 		for _, event := range events {
 			sub.mu.Lock()
 			currentFromTimestamp := sub.fromTimestamp
+			currentFromOffset := sub.fromOffset
 			sub.mu.Unlock()
 			
-			// Filter by timestamp - allow events with same timestamp or after
-			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
+			// Check if event should be included based on offset or timestamp
+			include := false
+			if currentFromOffset > 0 {
+				// Use offset-based filtering if specified
+				include = event.Offset > currentFromOffset
+			} else {
+				// Fall back to timestamp-based filtering
+				include = currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp)
+			}
+			
+			if include {
 				select {
 				case sub.eventsCh <- event:
 					sub.mu.Lock()
-					sub.fromTimestamp = event.Timestamp
+					if currentFromOffset > 0 {
+						sub.fromOffset = event.Offset
+					} else {
+						sub.fromTimestamp = event.Timestamp
+					}
 					sub.mu.Unlock()
 					count++
 					if sub.batchSize > 0 && count >= sub.batchSize {
@@ -233,9 +267,19 @@ func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventst
 
 	var result []eventstore.Event
 
-	// Filter events from timeline by timestamp
+	// Filter events from timeline by offset or timestamp
 	for _, event := range s.timeline {
-		if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
+		include := false
+		
+		// If FromOffset is specified, use offset-based filtering (takes precedence)
+		if opts.FromOffset > 0 {
+			include = event.Offset > opts.FromOffset
+		} else {
+			// Fall back to timestamp-based filtering
+			include = opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp)
+		}
+		
+		if include {
 			result = append(result, event)
 		}
 	}
@@ -255,6 +299,7 @@ func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventsto
 
 	sub := &InMemorySubscription{
 		fromTimestamp: opts.FromTimestamp,
+		fromOffset:    opts.FromOffset,
 		batchSize:     opts.BatchSize,
 		eventsCh:      make(chan eventstore.Event, 100), // Buffered channel
 		errorsCh:      make(chan error, 10),
@@ -314,6 +359,7 @@ func (s *InMemoryEventStore) removeSubscription(sub *InMemorySubscription) {
 // InMemorySubscription represents an active subscription to all streams in memory.
 type InMemorySubscription struct {
 	fromTimestamp time.Time
+	fromOffset    int64
 	batchSize     int
 	eventsCh      chan eventstore.Event
 	errorsCh      chan error

@@ -51,6 +51,7 @@ func (s *PostgresEventConsumer) Subscribe(opts eventstore.ConsumeOptions) (event
 
 	sub := &PostgresSubscription{
 		fromTimestamp:     opts.FromTimestamp,
+		fromOffset:        opts.FromOffset,
 		processedEventIDs: make(map[string]struct{}),
 		batchSize:         opts.BatchSize,
 		pollingInterval:   s.pollingInterval,
@@ -87,6 +88,7 @@ func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 // PostgresSubscription represents an active subscription to all streams in PostgreSQL.
 type PostgresSubscription struct {
 	fromTimestamp     time.Time
+	fromOffset        int64
 	processedEventIDs map[string]struct{}          // Track Event.IDs processed within current timestamp
 	batchSize         int
 	pollingInterval   time.Duration
@@ -154,7 +156,7 @@ func (s *PostgresSubscription) start() {
 	}
 }
 
-// pollForEvents polls the database for new events using timestamp-based filtering.
+// pollForEvents polls the database for new events using offset or timestamp-based filtering.
 func (s *PostgresSubscription) pollForEvents() {
 	// Safety check - don't try to poll if store or db is nil
 	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
@@ -167,9 +169,10 @@ func (s *PostgresSubscription) pollForEvents() {
 		batchSize = 100 // Default batch size
 	}
 
-	// Use timestamp-based filtering for polling (including equal timestamps for duplicates)
+	// Use offset or timestamp-based filtering for polling
 	events, err := s.store.loadEventsByTimestamp(eventstore.ConsumeOptions{
 		FromTimestamp: s.fromTimestamp,
+		FromOffset:    s.fromOffset,
 		BatchSize:     batchSize,
 	})
 	s.mu.Unlock()
@@ -185,22 +188,31 @@ func (s *PostgresSubscription) pollForEvents() {
 	for _, event := range events {
 		s.mu.Lock()
 		
-		// Check if we've moved to a new timestamp
-		if !event.Timestamp.Equal(s.fromTimestamp) {
-			// Clear processed IDs for new timestamp
-			s.processedEventIDs = make(map[string]struct{})
-		}
-		
-		// Skip if we've already processed this Event.ID within the current timestamp
-		if _, processed := s.processedEventIDs[event.ID]; processed {
+		// For offset-based filtering, we don't need to track processed IDs
+		// since offset provides better uniqueness guarantees
+		if s.fromOffset > 0 {
+			// Using offset-based filtering - events are unique by offset
+			s.fromOffset = event.Offset
 			s.mu.Unlock()
-			continue
+		} else {
+			// Using timestamp-based filtering - need to handle duplicates
+			// Check if we've moved to a new timestamp
+			if !event.Timestamp.Equal(s.fromTimestamp) {
+				// Clear processed IDs for new timestamp
+				s.processedEventIDs = make(map[string]struct{})
+			}
+			
+			// Skip if we've already processed this Event.ID within the current timestamp
+			if _, processed := s.processedEventIDs[event.ID]; processed {
+				s.mu.Unlock()
+				continue
+			}
+			
+			// Mark Event.ID as processed
+			s.processedEventIDs[event.ID] = struct{}{}
+			s.fromTimestamp = event.Timestamp
+			s.mu.Unlock()
 		}
-		
-		// Mark Event.ID as processed
-		s.processedEventIDs[event.ID] = struct{}{}
-		s.fromTimestamp = event.Timestamp
-		s.mu.Unlock()
 
 		select {
 		case s.eventsCh <- event:

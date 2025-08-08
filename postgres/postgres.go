@@ -92,8 +92,8 @@ func quoteIdentifier(identifier string) string {
 func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) (string, []interface{}) {
 	var args []interface{}
 	
-	// SELECT clause
-	selectClause := "SELECT event_id, event_type, event_data, metadata, timestamp, version"
+	// SELECT clause - include id as offset
+	selectClause := "SELECT id, event_id, event_type, event_data, metadata, timestamp, version"
 	
 	// FROM clause  
 	fromClause := fmt.Sprintf("FROM %s", quoteIdentifier(p.tableName))
@@ -153,6 +153,7 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 		var metadataJSON []byte
 
 		err := rows.Scan(
+			&event.Offset, // id column becomes Offset
 			&event.ID,
 			&event.Type,
 			&event.Data,
@@ -185,17 +186,31 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 
 // loadEventsByTimestamp retrieves events from all streams using timestamp-based filtering.
 func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	query := fmt.Sprintf(`
-		SELECT event_id, event_type, event_data, metadata, timestamp, version
-		FROM %s
-		WHERE timestamp >= $1
-		ORDER BY timestamp ASC, id ASC
-	`, quoteIdentifier(p.tableName))
+	var query string
+	var args []interface{}
 
-	args := []interface{}{opts.FromTimestamp}
+	// Use offset-based filtering if specified (takes precedence over timestamp)
+	if opts.FromOffset > 0 {
+		query = fmt.Sprintf(`
+			SELECT id, event_id, event_type, event_data, metadata, timestamp, version
+			FROM %s
+			WHERE id > $1
+			ORDER BY id ASC
+		`, quoteIdentifier(p.tableName))
+		args = []interface{}{opts.FromOffset}
+	} else {
+		// Fall back to timestamp-based filtering
+		query = fmt.Sprintf(`
+			SELECT id, event_id, event_type, event_data, metadata, timestamp, version
+			FROM %s
+			WHERE timestamp >= $1
+			ORDER BY timestamp ASC, id ASC
+		`, quoteIdentifier(p.tableName))
+		args = []interface{}{opts.FromTimestamp}
+	}
 
 	if opts.BatchSize > 0 {
-		query += " LIMIT $2"
+		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
 		args = append(args, opts.BatchSize)
 	}
 
@@ -212,6 +227,7 @@ func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]even
 		var metadataJSON []byte
 
 		err := rows.Scan(
+			&event.Offset, // id column becomes Offset
 			&event.ID,
 			&event.Type,
 			&event.Data,
