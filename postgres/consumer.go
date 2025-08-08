@@ -89,7 +89,7 @@ func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 type PostgresSubscription struct {
 	fromTimestamp     time.Time
 	fromOffset        int64
-	processedEventIDs map[string]struct{}          // Track Event.IDs processed within current timestamp
+	processedEventIDs map[string]struct{} // Track Event.IDs processed within current timestamp
 	batchSize         int
 	pollingInterval   time.Duration
 	eventsCh          chan eventstore.Event

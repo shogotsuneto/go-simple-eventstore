@@ -103,7 +103,7 @@ func TestInitSchema_EmptyTableName(t *testing.T) {
 	if err == nil {
 		t.Error("InitSchema should return error for empty table name")
 	}
-	
+
 	expectedError := "table name must not be empty"
 	if err.Error() != expectedError {
 		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
@@ -119,7 +119,7 @@ func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
 	if store != nil {
 		t.Error("NewPostgresEventStore should return nil store for empty table name")
 	}
-	
+
 	expectedError := "table name must not be empty"
 	if err.Error() != expectedError {
 		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
@@ -135,7 +135,7 @@ func TestNewPostgresEventConsumer_EmptyTableName(t *testing.T) {
 	if consumer != nil {
 		t.Error("NewPostgresEventConsumer should return nil consumer for empty table name")
 	}
-	
+
 	expectedError := "table name must not be empty"
 	if err.Error() != expectedError {
 		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
