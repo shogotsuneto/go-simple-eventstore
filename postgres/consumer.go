@@ -20,6 +20,7 @@ type PostgresEventConsumer struct {
 
 // NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection, table name, and polling interval.
 // tableName must not be empty.
+// This constructor maintains backward compatibility.
 func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
 	if tableName == "" {
 		return nil, fmt.Errorf("table name must not be empty")
@@ -31,10 +32,29 @@ func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time
 
 	return &PostgresEventConsumer{
 		pgClient: &pgClient{
-			db:        db,
-			tableName: tableName,
+			db:                       db,
+			tableName:                tableName,
+			useDbGeneratedTimestamps: false, // Default for backward compatibility
 		},
 		subscriptions:   []*PostgresSubscription{}, // Changed to a single slice
+		pollingInterval: pollingInterval,
+	}, nil
+}
+
+// NewPostgresEventConsumerWithConfig creates a new PostgreSQL event consumer with the given configuration and polling interval.
+func NewPostgresEventConsumerWithConfig(config Config, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
+	if pollingInterval <= 0 {
+		pollingInterval = 1 * time.Second
+	}
+
+	client, err := newPgClient(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PostgresEventConsumer{
+		pgClient:        client,
+		subscriptions:   []*PostgresSubscription{},
 		pollingInterval: pollingInterval,
 	}, nil
 }

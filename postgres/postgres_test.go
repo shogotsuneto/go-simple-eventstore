@@ -245,3 +245,160 @@ func TestBuildLoadQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_UseDbGeneratedTimestamps(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   Config
+		expected bool
+	}{
+		{
+			name: "default config uses app-generated timestamps",
+			config: Config{
+				ConnectionString: "test-connection",
+				TableName:        "test_table",
+			},
+			expected: false,
+		},
+		{
+			name: "explicit false uses app-generated timestamps",
+			config: Config{
+				ConnectionString:         "test-connection",
+				TableName:                "test_table",
+				UseDbGeneratedTimestamps: false,
+			},
+			expected: false,
+		},
+		{
+			name: "explicit true uses db-generated timestamps",
+			config: Config{
+				ConnectionString:         "test-connection",
+				TableName:                "test_table",
+				UseDbGeneratedTimestamps: true,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.config.UseDbGeneratedTimestamps != tt.expected {
+				t.Errorf("Expected UseDbGeneratedTimestamps %t, got %t", tt.expected, tt.config.UseDbGeneratedTimestamps)
+			}
+		})
+	}
+}
+
+func TestInitSchema_WithDbTimestamps(t *testing.T) {
+	// Test that InitSchema properly handles the variadic useDbTimestamps parameter
+	// We can only test the empty table name validation since we don't have a real database connection
+	
+	// Test empty table name without timestamp parameter
+	err := InitSchema(nil, "")
+	if err == nil {
+		t.Error("InitSchema should return error for empty table name")
+	}
+	expectedError := "table name must not be empty"
+	if err != nil && err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+	
+	// Test empty table name with timestamp parameter false
+	err = InitSchema(nil, "", false)
+	if err == nil {
+		t.Error("InitSchema should return error for empty table name even with useDbTimestamps=false")
+	}
+	if err != nil && err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+	
+	// Test empty table name with timestamp parameter true
+	err = InitSchema(nil, "", true)
+	if err == nil {
+		t.Error("InitSchema should return error for empty table name even with useDbTimestamps=true")
+	}
+	if err != nil && err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+	
+	// Note: We cannot test with valid table names because that would require a real database connection
+	// The integration tests will cover the actual schema creation functionality
+}
+
+func TestNewPostgresEventStoreWithConfig(t *testing.T) {
+	// Test that the new constructor accepts Config properly
+	// Test empty table name first (should fail before database connection)
+	config := Config{
+		ConnectionString:         "valid-connection-string",
+		TableName:                "",
+		UseDbGeneratedTimestamps: true,
+	}
+	
+	store, err := NewPostgresEventStoreWithConfig(config)
+	if err == nil {
+		t.Error("NewPostgresEventStoreWithConfig should return error for empty table name")
+	}
+	if store != nil {
+		t.Error("NewPostgresEventStoreWithConfig should return nil store for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err != nil && err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+	
+	// Test invalid connection string with valid table name (will fail on database connection)
+	config = Config{
+		ConnectionString:         "", // Invalid connection string
+		TableName:                "test_table",
+		UseDbGeneratedTimestamps: true,
+	}
+	
+	store, err = NewPostgresEventStoreWithConfig(config)
+	if err == nil {
+		t.Error("NewPostgresEventStoreWithConfig should return error for invalid connection string")
+	}
+	if store != nil {
+		t.Error("NewPostgresEventStoreWithConfig should return nil store for invalid connection string")
+	}
+	// The specific error will be about database connection, which is expected
+}
+
+func TestNewPostgresEventConsumerWithConfig(t *testing.T) {
+	// Test that the new constructor accepts Config properly
+	// Test empty table name first (should fail before database connection)
+	config := Config{
+		ConnectionString:         "valid-connection-string",
+		TableName:                "",
+		UseDbGeneratedTimestamps: true,
+	}
+	
+	consumer, err := NewPostgresEventConsumerWithConfig(config, 1*time.Second)
+	if err == nil {
+		t.Error("NewPostgresEventConsumerWithConfig should return error for empty table name")
+	}
+	if consumer != nil {
+		t.Error("NewPostgresEventConsumerWithConfig should return nil consumer for empty table name")
+	}
+	
+	expectedError := "table name must not be empty"
+	if err != nil && err.Error() != expectedError {
+		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
+	}
+	
+	// Test invalid connection string with valid table name (will fail on database connection)
+	config = Config{
+		ConnectionString:         "", // Invalid connection string  
+		TableName:                "test_table",
+		UseDbGeneratedTimestamps: true,
+	}
+	
+	consumer, err = NewPostgresEventConsumerWithConfig(config, 1*time.Second)
+	if err == nil {
+		t.Error("NewPostgresEventConsumerWithConfig should return error for invalid connection string")
+	}
+	if consumer != nil {
+		t.Error("NewPostgresEventConsumerWithConfig should return nil consumer for invalid connection string")
+	}
+	// The specific error will be about database connection, which is expected
+}
