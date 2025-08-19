@@ -19,7 +19,9 @@ func setupTestConsumer(t *testing.T) (eventstore.EventConsumer, eventstore.Event
 }
 
 func setupTestConsumerWithTableName(t *testing.T, tableName string, pollingInterval time.Duration) (eventstore.EventConsumer, eventstore.EventStore, *sql.DB) {
-	db, err := sql.Open("postgres", getTestConnectionString())
+	connStr := getTestConnectionString()
+	
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		t.Fatalf("Failed to open database connection: %v", err)
 	}
@@ -28,15 +30,21 @@ func setupTestConsumerWithTableName(t *testing.T, tableName string, pollingInter
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	if err := postgres.InitSchema(db, tableName); err != nil {
+	if err := postgres.InitSchema(db, tableName, false); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	store, err := postgres.NewPostgresEventStore(db, tableName)
+	config := postgres.Config{
+		ConnectionString:         connStr,
+		TableName:                tableName,
+		UseDbGeneratedTimestamps: false,
+	}
+
+	store, err := postgres.NewPostgresEventStore(config)
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
-	consumer, err := postgres.NewPostgresEventConsumer(db, tableName, pollingInterval)
+	consumer, err := postgres.NewPostgresEventConsumer(config, pollingInterval)
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event consumer: %v", err)
 	}

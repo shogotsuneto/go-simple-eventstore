@@ -54,12 +54,18 @@ func main() {
 
 	// Initialize the database schema
 	fmt.Printf("🔧 Initializing database schema with table '%s'...\n", *tableName)
-	if err := postgres.InitSchema(db, *tableName); err != nil {
+	if err := postgres.InitSchema(db, *tableName, false); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	// Create PostgreSQL event store
-	store, err = postgres.NewPostgresEventStore(db, *tableName)
+	// Create PostgreSQL event store using config
+	config := postgres.Config{
+		ConnectionString:         *pgConnStr,
+		TableName:                *tableName,
+		UseDbGeneratedTimestamps: false, // Use app-generated timestamps
+	}
+	
+	store, err = postgres.NewPostgresEventStore(config)
 	if err != nil {
 		log.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
@@ -188,13 +194,13 @@ func main() {
 	}
 	
 	// Create event store with database-generated timestamps using Config
-	config := postgres.Config{
+	dbConfig := postgres.Config{
 		ConnectionString:         *pgConnStr,
 		TableName:                dbTimestampTableName,
 		UseDbGeneratedTimestamps: true,
 	}
 	
-	dbTimestampStore, err := postgres.NewPostgresEventStoreWithConfig(config)
+	dbTimestampStore, err := postgres.NewPostgresEventStore(dbConfig)
 	if err != nil {
 		log.Fatalf("Failed to create PostgreSQL event store with DB timestamps: %v", err)
 	}

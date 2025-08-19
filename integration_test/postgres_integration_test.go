@@ -28,7 +28,9 @@ func getTestConnectionString() string {
 }
 
 func setupTestStore(t *testing.T, tableName string) (eventstore.EventStore, *sql.DB) {
-	db, err := sql.Open("postgres", getTestConnectionString())
+	connStr := getTestConnectionString()
+	
+	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		t.Fatalf("Failed to open database connection: %v", err)
 	}
@@ -37,11 +39,17 @@ func setupTestStore(t *testing.T, tableName string) (eventstore.EventStore, *sql
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	if err := postgres.InitSchema(db, tableName); err != nil {
+	if err := postgres.InitSchema(db, tableName, false); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	store, err := postgres.NewPostgresEventStore(db, tableName)
+	config := postgres.Config{
+		ConnectionString:         connStr,
+		TableName:                tableName,
+		UseDbGeneratedTimestamps: false,
+	}
+	
+	store, err := postgres.NewPostgresEventStore(config)
 	if err != nil {
 		t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 	}
@@ -749,12 +757,17 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		}
 
 		// Initialize schema with app-generated timestamps (default behavior)
-		if err := postgres.InitSchema(db, tableName); err != nil {
+		if err := postgres.InitSchema(db, tableName, false); err != nil {
 			t.Fatalf("Failed to initialize schema with app-generated timestamps: %v", err)
 		}
 
 		// Create event store with app-generated timestamps (default)
-		store, err := postgres.NewPostgresEventStore(db, tableName)
+		config := postgres.Config{
+			ConnectionString:         getTestConnectionString(),
+			TableName:                tableName,
+			UseDbGeneratedTimestamps: false,
+		}
+		store, err := postgres.NewPostgresEventStore(config)
 		if err != nil {
 			t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 		}
@@ -826,7 +839,7 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		}
 
 		// Create event store with database-generated timestamps
-		store, err := postgres.NewPostgresEventStoreWithConfig(config)
+		store, err := postgres.NewPostgresEventStore(config)
 		if err != nil {
 			t.Fatalf("Failed to create PostgreSQL event store with config: %v", err)
 		}

@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"sync"
 	"time"
 
@@ -18,23 +16,20 @@ type PostgresEventConsumer struct {
 	pollingInterval time.Duration
 }
 
-// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection, table name, and polling interval.
-// tableName must not be empty.
-func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
-	if tableName == "" {
-		return nil, fmt.Errorf("table name must not be empty")
-	}
-
+// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration and polling interval.
+func NewPostgresEventConsumer(config Config, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
 	if pollingInterval <= 0 {
 		pollingInterval = 1 * time.Second
 	}
 
+	client, err := newPgClient(config)
+	if err != nil {
+		return nil, err
+	}
+
 	return &PostgresEventConsumer{
-		pgClient: &pgClient{
-			db:        db,
-			tableName: tableName,
-		},
-		subscriptions:   []*PostgresSubscription{}, // Changed to a single slice
+		pgClient:        client,
+		subscriptions:   []*PostgresSubscription{},
 		pollingInterval: pollingInterval,
 	}, nil
 }
