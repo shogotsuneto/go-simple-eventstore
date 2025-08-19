@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -919,6 +920,70 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		if event2.Timestamp.Before(beforeAppend2) || event2.Timestamp.After(afterAppend2) {
 			t.Errorf("DB-generated timestamp %v should be between %v and %v, not the pre-set time %v", 
 				event2.Timestamp, beforeAppend2, afterAppend2, fixedTime)
+		}
+
+		// Clean up table
+		_, err = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", tableName))
+		if err != nil {
+			t.Fatalf("Failed to clean up table: %v", err)
+		}
+	})
+
+	t.Run("MismatchedConfiguration_ShouldError", func(t *testing.T) {
+		// Test configuration mismatch: schema without default, client expecting database timestamps
+		// This should result in an error due to NOT NULL constraint violation
+		
+		// Setup database connection
+		db, err := sql.Open("postgres", getTestConnectionString())
+		if err != nil {
+			t.Fatalf("Failed to open database connection: %v", err)
+		}
+		defer db.Close()
+
+		if err := db.Ping(); err != nil {
+			t.Fatalf("Failed to ping database: %v", err)
+		}
+
+		// Initialize schema WITHOUT database-generated timestamps (no DEFAULT CURRENT_TIMESTAMP)
+		if err := postgres.InitSchema(db, tableName, false); err != nil {
+			t.Fatalf("Failed to initialize schema without db-generated timestamps: %v", err)
+		}
+
+		// Create event store WITH database-generated timestamps enabled (mismatch!)
+		config := postgres.Config{
+			ConnectionString:         getTestConnectionString(),
+			TableName:                tableName,
+			UseDbGeneratedTimestamps: true, // This is the mismatch - schema has no default but client expects DB to generate
+		}
+		store, err := postgres.NewPostgresEventStore(config)
+		if err != nil {
+			t.Fatalf("Failed to create PostgreSQL event store: %v", err)
+		}
+
+		// Try to append events - this should fail with NOT NULL constraint violation
+		events := []eventstore.Event{
+			{
+				Type: "TestEvent",
+				Data: []byte(`{"test": "mismatch-config"}`),
+				Metadata: map[string]string{
+					"source": "integration-test",
+				},
+			},
+		}
+
+		streamID := "test-stream-mismatch-" + fmt.Sprintf("%d", time.Now().UnixNano())
+		err = store.Append(streamID, events, -1)
+		
+		// We expect this to fail with a database error about NOT NULL constraint
+		if err == nil {
+			t.Fatalf("Expected error due to configuration mismatch (schema without default, client with UseDbGeneratedTimestamps=true), but got nil")
+		}
+		
+		// Verify it's specifically a NOT NULL constraint error
+		errMsg := err.Error()
+		if !strings.Contains(strings.ToLower(errMsg), "not null") && 
+		   !strings.Contains(strings.ToLower(errMsg), "null value") {
+			t.Errorf("Expected NOT NULL constraint error, but got different error: %v", err)
 		}
 
 		// Clean up table
