@@ -40,14 +40,14 @@ func setupTestStore(t *testing.T, tableName string) (eventstore.EventStore, *sql
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	if err := postgres.InitSchema(db, tableName, true); err != nil {
+	if err := postgres.InitSchema(db, tableName, false); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
 	config := postgres.Config{
 		ConnectionString:          connStr,
 		TableName:                 tableName,
-		UseClientGeneratedTimestamps: true, // Use app-generated timestamps (was UseDbGeneratedTimestamps: false)
+		UseClientGeneratedTimestamps: false, // Use database-generated timestamps (default)
 	}
 	
 	store, err := postgres.NewPostgresEventStore(config)
@@ -741,11 +741,11 @@ func TestPostgresEventStore_Load_Desc(t *testing.T) {
 	})
 }
 
-func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
-	// Test database-generated timestamps vs app-generated timestamps
-	tableName := "events_db_timestamps_test"
+func TestPostgresEventStore_Integration_ClientGeneratedTimestamps(t *testing.T) {
+	// Test client-generated timestamps (non-default behavior)
+	tableName := "events_client_timestamps_test"
 	
-	t.Run("AppGeneratedTimestamps", func(t *testing.T) {
+	t.Run("ClientGeneratedTimestamps", func(t *testing.T) {
 		// Setup database connection
 		db, err := sql.Open("postgres", getTestConnectionString())
 		if err != nil {
@@ -757,12 +757,12 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 			t.Fatalf("Failed to ping database: %v", err)
 		}
 
-		// Initialize schema with app-generated timestamps (default behavior)
+		// Initialize schema for client-generated timestamps
 		if err := postgres.InitSchema(db, tableName, true); err != nil {
-			t.Fatalf("Failed to initialize schema with app-generated timestamps: %v", err)
+			t.Fatalf("Failed to initialize schema for client-generated timestamps: %v", err)
 		}
 
-		// Create event store with app-generated timestamps (default)
+		// Create event store with client-generated timestamps
 		config := postgres.Config{
 			ConnectionString:          getTestConnectionString(),
 			TableName:                 tableName,
@@ -773,19 +773,19 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 			t.Fatalf("Failed to create PostgreSQL event store: %v", err)
 		}
 
-		// Test event with app-generated timestamp
+		// Test event with client-generated timestamp
 		beforeAppend := time.Now()
 		events := []eventstore.Event{
 			{
 				Type: "TestEvent",
-				Data: []byte(`{"test": "app-generated"}`),
+				Data: []byte(`{"test": "client-generated"}`),
 				Metadata: map[string]string{
 					"source": "integration-test",
 				},
 			},
 		}
 
-		streamID := "test-stream-app-" + fmt.Sprintf("%d", time.Now().UnixNano())
+		streamID := "test-stream-client-" + fmt.Sprintf("%d", time.Now().UnixNano())
 		err = store.Append(streamID, events, -1)
 		if err != nil {
 			t.Fatalf("Failed to append events: %v", err)
@@ -804,104 +804,29 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 
 		event := loadedEvents[0]
 		if event.Timestamp.Before(beforeAppend) || event.Timestamp.After(afterAppend) {
-			t.Errorf("App-generated timestamp %v should be between %v and %v", 
+			t.Errorf("Client-generated timestamp %v should be between %v and %v", 
 				event.Timestamp, beforeAppend, afterAppend)
 		}
 
-		// Clean up table for next test
-		_, err = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", tableName))
-		if err != nil {
-			t.Fatalf("Failed to clean up table: %v", err)
-		}
-	})
-
-	t.Run("DbGeneratedTimestamps", func(t *testing.T) {
-		// Test using the new Config-based constructor with database-generated timestamps
-		config := postgres.Config{
-			ConnectionString:          getTestConnectionString(),
-			TableName:                 tableName,
-			UseClientGeneratedTimestamps: false, // Use database-generated timestamps
-		}
-
-		// Initialize schema with database-generated timestamps
-		db, err := sql.Open("postgres", config.ConnectionString)
-		if err != nil {
-			t.Fatalf("Failed to open database connection: %v", err)
-		}
-		defer db.Close()
-
-		if err := db.Ping(); err != nil {
-			t.Fatalf("Failed to ping database: %v", err)
-		}
-
-		// Initialize schema with db-generated timestamps
-		if err := postgres.InitSchema(db, config.TableName, config.UseClientGeneratedTimestamps); err != nil {
-			t.Fatalf("Failed to initialize schema with db-generated timestamps: %v", err)
-		}
-
-		// Create event store with database-generated timestamps
-		store, err := postgres.NewPostgresEventStore(config)
-		if err != nil {
-			t.Fatalf("Failed to create PostgreSQL event store with config: %v", err)
-		}
-
-		// Test event with database-generated timestamp
-		beforeAppend := time.Now()
-		events := []eventstore.Event{
-			{
-				Type: "TestEvent",
-				Data: []byte(`{"test": "db-generated"}`),
-				Metadata: map[string]string{
-					"source": "integration-test",
-				},
-			},
-		}
-
-		streamID := "test-stream-db-" + fmt.Sprintf("%d", time.Now().UnixNano())
-		err = store.Append(streamID, events, -1)
-		if err != nil {
-			t.Fatalf("Failed to append events: %v", err)
-		}
-		afterAppend := time.Now()
-
-		// Load the event back and verify timestamp is within expected range
-		loadedEvents, err := store.Load(streamID, eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 10})
-		if err != nil {
-			t.Fatalf("Failed to load events: %v", err)
-		}
-
-		if len(loadedEvents) != 1 {
-			t.Fatalf("Expected 1 event, got %d", len(loadedEvents))
-		}
-
-		event := loadedEvents[0]
-		// Database-generated timestamp should be close to the append time
-		if event.Timestamp.Before(beforeAppend) || event.Timestamp.After(afterAppend) {
-			t.Errorf("DB-generated timestamp %v should be between %v and %v", 
-				event.Timestamp, beforeAppend, afterAppend)
-		}
-
-		// Test that app-provided timestamps are ignored when using DB-generated mode
+		// Test that client-provided timestamps are used
 		fixedTime := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
 		eventsWithTimestamp := []eventstore.Event{
 			{
 				Type:      "TestEventWithTimestamp",
-				Data:      []byte(`{"test": "ignored-timestamp"}`),
-				Timestamp: fixedTime, // This should be ignored
+				Data:      []byte(`{"test": "explicit-timestamp"}`),
+				Timestamp: fixedTime, // This should be used
 			},
 		}
 
-		streamID2 := "test-stream-ignored-" + fmt.Sprintf("%d", time.Now().UnixNano())
-		beforeAppend2 := time.Now()
+		streamID2 := "test-stream-explicit-" + fmt.Sprintf("%d", time.Now().UnixNano())
 		err = store.Append(streamID2, eventsWithTimestamp, -1)
 		if err != nil {
-			t.Fatalf("Failed to append events with pre-set timestamp: %v", err)
+			t.Fatalf("Failed to append events with explicit timestamp: %v", err)
 		}
-		afterAppend2 := time.Now()
 
 		loadedEvents2, err := store.Load(streamID2, eventstore.LoadOptions{ExclusiveStartVersion: 0, Limit: 10})
 		if err != nil {
-			t.Fatalf("Failed to load events with pre-set timestamp: %v", err)
+			t.Fatalf("Failed to load events with explicit timestamp: %v", err)
 		}
 
 		if len(loadedEvents2) != 1 {
@@ -909,13 +834,9 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		}
 
 		event2 := loadedEvents2[0]
-		// Verify that the database ignored the pre-set timestamp and used current time
-		if event2.Timestamp.Equal(fixedTime) {
-			t.Errorf("Database should have ignored pre-set timestamp %v, but event has that exact timestamp", fixedTime)
-		}
-		if event2.Timestamp.Before(beforeAppend2) || event2.Timestamp.After(afterAppend2) {
-			t.Errorf("DB-generated timestamp %v should be between %v and %v, not the pre-set time %v", 
-				event2.Timestamp, beforeAppend2, afterAppend2, fixedTime)
+		// Verify that the client-provided timestamp was used
+		if !event2.Timestamp.Equal(fixedTime) {
+			t.Errorf("Expected client-provided timestamp %v, but got %v", fixedTime, event2.Timestamp)
 		}
 
 		// Clean up table
@@ -940,12 +861,12 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 			t.Fatalf("Failed to ping database: %v", err)
 		}
 
-		// Initialize schema WITHOUT database-generated timestamps (no DEFAULT CURRENT_TIMESTAMP)
+		// Initialize schema for client-generated timestamps (no DEFAULT CURRENT_TIMESTAMP)
 		if err := postgres.InitSchema(db, tableName, true); err != nil {
-			t.Fatalf("Failed to initialize schema without db-generated timestamps: %v", err)
+			t.Fatalf("Failed to initialize schema for client-generated timestamps: %v", err)
 		}
 
-		// Create event store WITH database-generated timestamps enabled (mismatch!)
+		// Create event store with database-generated timestamps enabled (mismatch!)
 		config := postgres.Config{
 			ConnectionString:          getTestConnectionString(),
 			TableName:                 tableName,
