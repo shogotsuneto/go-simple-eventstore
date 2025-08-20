@@ -881,10 +881,6 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 				event.Timestamp, beforeAppend, afterAppend)
 		}
 
-		// Verify that the event timestamp field in the struct is zero (since it was not set by app)
-		// But this is tricky to verify since the loaded event will have the DB timestamp
-		// Instead, let's verify the behavior by testing with a pre-set timestamp
-		
 		// Test that app-provided timestamps are ignored when using DB-generated mode
 		fixedTime := time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC)
 		eventsWithTimestamp := []eventstore.Event{
