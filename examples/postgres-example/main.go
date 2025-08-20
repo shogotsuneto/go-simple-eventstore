@@ -54,15 +54,15 @@ func main() {
 
 	// Initialize the database schema
 	fmt.Printf("🔧 Initializing database schema with table '%s'...\n", *tableName)
-	if err := postgres.InitSchema(db, *tableName, false); err != nil {
+	if err := postgres.InitSchema(db, *tableName, true); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 
 	// Create PostgreSQL event store using config
 	config := postgres.Config{
-		ConnectionString:         *pgConnStr,
-		TableName:                *tableName,
-		UseDbGeneratedTimestamps: false, // Use app-generated timestamps
+		ConnectionString:          *pgConnStr,
+		TableName:                 *tableName,
+		UseClientGeneratedTimestamps: true, // Use app-generated timestamps
 	}
 	
 	store, err = postgres.NewPostgresEventStore(config)
@@ -189,15 +189,15 @@ func main() {
 	
 	// Initialize schema with database-generated timestamps
 	fmt.Printf("🔧 Initializing schema with DB-generated timestamps for table '%s'...\n", dbTimestampTableName)
-	if err := postgres.InitSchema(db, dbTimestampTableName, true); err != nil {
+	if err := postgres.InitSchema(db, dbTimestampTableName, false); err != nil {
 		log.Fatalf("Failed to initialize schema with DB timestamps: %v", err)
 	}
 	
 	// Create event store with database-generated timestamps using Config
 	dbConfig := postgres.Config{
-		ConnectionString:         *pgConnStr,
-		TableName:                dbTimestampTableName,
-		UseDbGeneratedTimestamps: true,
+		ConnectionString:          *pgConnStr,
+		TableName:                 dbTimestampTableName,
+		UseClientGeneratedTimestamps: false, // Use database-generated timestamps
 	}
 	
 	dbTimestampStore, err := postgres.NewPostgresEventStore(dbConfig)

@@ -30,14 +30,14 @@ func setupTestConsumerWithTableName(t *testing.T, tableName string, pollingInter
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	if err := postgres.InitSchema(db, tableName, false); err != nil {
+	if err := postgres.InitSchema(db, tableName, true); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
 	config := postgres.Config{
-		ConnectionString:         connStr,
-		TableName:                tableName,
-		UseDbGeneratedTimestamps: false,
+		ConnectionString:          connStr,
+		TableName:                 tableName,
+		UseClientGeneratedTimestamps: true, // Use app-generated timestamps
 	}
 
 	store, err := postgres.NewPostgresEventStore(config)

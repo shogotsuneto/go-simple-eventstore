@@ -40,14 +40,14 @@ func setupTestStore(t *testing.T, tableName string) (eventstore.EventStore, *sql
 		t.Fatalf("Failed to ping database: %v", err)
 	}
 
-	if err := postgres.InitSchema(db, tableName, false); err != nil {
+	if err := postgres.InitSchema(db, tableName, true); err != nil {
 		t.Fatalf("Failed to initialize schema: %v", err)
 	}
 
 	config := postgres.Config{
-		ConnectionString:         connStr,
-		TableName:                tableName,
-		UseDbGeneratedTimestamps: false,
+		ConnectionString:          connStr,
+		TableName:                 tableName,
+		UseClientGeneratedTimestamps: true, // Use app-generated timestamps (was UseDbGeneratedTimestamps: false)
 	}
 	
 	store, err := postgres.NewPostgresEventStore(config)
@@ -758,15 +758,15 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		}
 
 		// Initialize schema with app-generated timestamps (default behavior)
-		if err := postgres.InitSchema(db, tableName, false); err != nil {
+		if err := postgres.InitSchema(db, tableName, true); err != nil {
 			t.Fatalf("Failed to initialize schema with app-generated timestamps: %v", err)
 		}
 
 		// Create event store with app-generated timestamps (default)
 		config := postgres.Config{
-			ConnectionString:         getTestConnectionString(),
-			TableName:                tableName,
-			UseDbGeneratedTimestamps: false,
+			ConnectionString:          getTestConnectionString(),
+			TableName:                 tableName,
+			UseClientGeneratedTimestamps: true,
 		}
 		store, err := postgres.NewPostgresEventStore(config)
 		if err != nil {
@@ -818,9 +818,9 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 	t.Run("DbGeneratedTimestamps", func(t *testing.T) {
 		// Test using the new Config-based constructor with database-generated timestamps
 		config := postgres.Config{
-			ConnectionString:         getTestConnectionString(),
-			TableName:                tableName,
-			UseDbGeneratedTimestamps: true,
+			ConnectionString:          getTestConnectionString(),
+			TableName:                 tableName,
+			UseClientGeneratedTimestamps: false, // Use database-generated timestamps
 		}
 
 		// Initialize schema with database-generated timestamps
@@ -835,7 +835,7 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		}
 
 		// Initialize schema with db-generated timestamps
-		if err := postgres.InitSchema(db, config.TableName, config.UseDbGeneratedTimestamps); err != nil {
+		if err := postgres.InitSchema(db, config.TableName, config.UseClientGeneratedTimestamps); err != nil {
 			t.Fatalf("Failed to initialize schema with db-generated timestamps: %v", err)
 		}
 
@@ -945,15 +945,15 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		}
 
 		// Initialize schema WITHOUT database-generated timestamps (no DEFAULT CURRENT_TIMESTAMP)
-		if err := postgres.InitSchema(db, tableName, false); err != nil {
+		if err := postgres.InitSchema(db, tableName, true); err != nil {
 			t.Fatalf("Failed to initialize schema without db-generated timestamps: %v", err)
 		}
 
 		// Create event store WITH database-generated timestamps enabled (mismatch!)
 		config := postgres.Config{
-			ConnectionString:         getTestConnectionString(),
-			TableName:                tableName,
-			UseDbGeneratedTimestamps: true, // This is the mismatch - schema has no default but client expects DB to generate
+			ConnectionString:          getTestConnectionString(),
+			TableName:                 tableName,
+			UseClientGeneratedTimestamps: false, // This is the mismatch - schema expects client timestamps but client expects DB to generate
 		}
 		store, err := postgres.NewPostgresEventStore(config)
 		if err != nil {
@@ -976,7 +976,7 @@ func TestPostgresEventStore_Integration_DbGeneratedTimestamps(t *testing.T) {
 		
 		// We expect this to fail with a database error about NOT NULL constraint
 		if err == nil {
-			t.Fatalf("Expected error due to configuration mismatch (schema without default, client with UseDbGeneratedTimestamps=true), but got nil")
+			t.Fatalf("Expected error due to configuration mismatch (schema expecting client timestamps, client expecting DB generation), but got nil")
 		}
 		
 		// Verify it's specifically a NOT NULL constraint error

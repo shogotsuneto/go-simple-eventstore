@@ -69,7 +69,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 
 	// Prepare the insert statement based on timestamp configuration
 	var insertQuery string
-	if s.useDbGeneratedTimestamps {
+	if !s.useClientGeneratedTimestamps {
 		// Let database generate timestamp with DEFAULT CURRENT_TIMESTAMP
 		insertQuery = fmt.Sprintf(`
 			INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata)
@@ -106,7 +106,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 			}
 		}
 
-		if s.useDbGeneratedTimestamps {
+		if !s.useClientGeneratedTimestamps {
 			// Insert without timestamp, let database generate it
 			_, err = stmt.Exec(streamID, version, eventID, event.Type, event.Data, metadataJSON)
 		} else {

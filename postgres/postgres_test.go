@@ -113,9 +113,9 @@ func TestInitSchema_EmptyTableName(t *testing.T) {
 func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
 	// Test that NewPostgresEventStore returns an error for empty table names
 	config := Config{
-		ConnectionString:         "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
-		TableName:                "", // This should fail before connection is attempted
-		UseDbGeneratedTimestamps: false,
+		ConnectionString:          "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
+		TableName:                 "", // This should fail before connection is attempted
+		UseClientGeneratedTimestamps: false,
 	}
 	
 	store, err := NewPostgresEventStore(config)
@@ -135,9 +135,9 @@ func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
 func TestNewPostgresEventConsumer_EmptyTableName(t *testing.T) {
 	// Test that NewPostgresEventConsumer returns an error for empty table names
 	config := Config{
-		ConnectionString:         "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
-		TableName:                "", // This should fail before connection is attempted
-		UseDbGeneratedTimestamps: false,
+		ConnectionString:          "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
+		TableName:                 "", // This should fail before connection is attempted
+		UseClientGeneratedTimestamps: false,
 	}
 	
 	consumer, err := NewPostgresEventConsumer(config, 1*time.Second)
@@ -258,15 +258,15 @@ func TestBuildLoadQuery(t *testing.T) {
 	}
 }
 
-func TestConfig_UseDbGeneratedTimestamps(t *testing.T) {
-	// Test that default config uses app-generated timestamps
+func TestConfig_UseClientGeneratedTimestamps(t *testing.T) {
+	// Test that default config uses database-generated timestamps (UseClientGeneratedTimestamps = false)
 	config := Config{
 		ConnectionString: "test-connection",
 		TableName:        "test_table",
 	}
 	
-	if config.UseDbGeneratedTimestamps != false {
-		t.Errorf("Expected default UseDbGeneratedTimestamps to be false, got %t", config.UseDbGeneratedTimestamps)
+	if config.UseClientGeneratedTimestamps != false {
+		t.Errorf("Expected default UseClientGeneratedTimestamps to be false, got %t", config.UseClientGeneratedTimestamps)
 	}
 }
 

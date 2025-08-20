@@ -11,10 +11,11 @@ import (
 )
 
 // InitSchema creates the necessary tables and indexes if they don't exist.
-// It takes a database connection, table name, and useDbTimestamps flag to initialize the schema.
+// It takes a database connection, table name, and useClientTimestamps flag to initialize the schema.
 // tableName must not be empty.
-// useDbTimestamps controls whether the timestamp column should have DEFAULT CURRENT_TIMESTAMP.
-func InitSchema(db *sql.DB, tableName string, useDbTimestamps bool) error {
+// useClientTimestamps controls whether the timestamp column should have DEFAULT CURRENT_TIMESTAMP.
+// When false (default), the database generates timestamps; when true, the application generates them.
+func InitSchema(db *sql.DB, tableName string, useClientTimestamps bool) error {
 	if tableName == "" {
 		return fmt.Errorf("table name must not be empty")
 	}
@@ -23,7 +24,8 @@ func InitSchema(db *sql.DB, tableName string, useDbTimestamps bool) error {
 	
 	// Build timestamp column definition
 	timestampColumn := "timestamp TIMESTAMP WITH TIME ZONE NOT NULL"
-	if useDbTimestamps {
+	if !useClientTimestamps {
+		// When useClientTimestamps is false, database generates timestamps
 		timestampColumn = "timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP"
 	}
 	
@@ -57,17 +59,17 @@ type Config struct {
 	ConnectionString string
 	// TableName is the name of the table to store events. Must not be empty.
 	TableName string
-	// UseDbGeneratedTimestamps controls whether to use database-generated timestamps.
-	// When true, the database generates timestamps using DEFAULT CURRENT_TIMESTAMP.
-	// When false, timestamps are generated in the application layer.
-	UseDbGeneratedTimestamps bool
+	// UseClientGeneratedTimestamps controls whether to use client-generated timestamps.
+	// When false (default), the database generates timestamps using DEFAULT CURRENT_TIMESTAMP.
+	// When true, timestamps are generated in the application layer.
+	UseClientGeneratedTimestamps bool
 }
 
 // pgClient contains shared database functionality used by both producer and consumer.
 type pgClient struct {
-	db                       *sql.DB
-	tableName                string
-	useDbGeneratedTimestamps bool
+	db                        *sql.DB
+	tableName                 string
+	useClientGeneratedTimestamps bool
 }
 
 // newPgClient creates a new shared postgres client with the given configuration.
@@ -87,9 +89,9 @@ func newPgClient(config Config) (*pgClient, error) {
 	}
 
 	return &pgClient{
-		db:                       db,
-		tableName:                tableName,
-		useDbGeneratedTimestamps: config.UseDbGeneratedTimestamps,
+		db:                        db,
+		tableName:                 tableName,
+		useClientGeneratedTimestamps: config.UseClientGeneratedTimestamps,
 	}, nil
 }
 
