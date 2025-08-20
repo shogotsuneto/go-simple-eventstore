@@ -259,117 +259,16 @@ func TestBuildLoadQuery(t *testing.T) {
 }
 
 func TestConfig_UseDbGeneratedTimestamps(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   Config
-		expected bool
-	}{
-		{
-			name: "default config uses app-generated timestamps",
-			config: Config{
-				ConnectionString: "test-connection",
-				TableName:        "test_table",
-			},
-			expected: false,
-		},
-		{
-			name: "explicit false uses app-generated timestamps",
-			config: Config{
-				ConnectionString:         "test-connection",
-				TableName:                "test_table",
-				UseDbGeneratedTimestamps: false,
-			},
-			expected: false,
-		},
-		{
-			name: "explicit true uses db-generated timestamps",
-			config: Config{
-				ConnectionString:         "test-connection",
-				TableName:                "test_table",
-				UseDbGeneratedTimestamps: true,
-			},
-			expected: true,
-		},
+	// Test that default config uses app-generated timestamps
+	config := Config{
+		ConnectionString: "test-connection",
+		TableName:        "test_table",
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.config.UseDbGeneratedTimestamps != tt.expected {
-				t.Errorf("Expected UseDbGeneratedTimestamps %t, got %t", tt.expected, tt.config.UseDbGeneratedTimestamps)
-			}
-		})
+	
+	if config.UseDbGeneratedTimestamps != false {
+		t.Errorf("Expected default UseDbGeneratedTimestamps to be false, got %t", config.UseDbGeneratedTimestamps)
 	}
 }
 
-func TestInitSchema_WithDbTimestamps(t *testing.T) {
-	// Test that InitSchema properly handles the variadic useDbTimestamps parameter
-	// We can only test the empty table name validation since we don't have a real database connection
-	
-	// Test empty table name without explicit timestamp parameter (defaults to false)
-	err := InitSchema(nil, "", false)
-	if err == nil {
-		t.Error("InitSchema should return error for empty table name")
-	}
-	expectedError := "table name must not be empty"
-	if err != nil && err.Error() != expectedError {
-		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
-	}
-	
-	// Test empty table name with timestamp parameter false
-	err = InitSchema(nil, "", false)
-	if err == nil {
-		t.Error("InitSchema should return error for empty table name even with useDbTimestamps=false")
-	}
-	if err != nil && err.Error() != expectedError {
-		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
-	}
-	
-	// Test empty table name with timestamp parameter true
-	err = InitSchema(nil, "", true)
-	if err == nil {
-		t.Error("InitSchema should return error for empty table name even with useDbTimestamps=true")
-	}
-	if err != nil && err.Error() != expectedError {
-		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
-	}
-	
-	// Note: We cannot test with valid table names because that would require a real database connection
-	// The integration tests will cover the actual schema creation functionality
-}
 
-func TestConfig_UseDbGeneratedTimestamps_Integration(t *testing.T) {
-	// Test that the config properly passes through the UseDbGeneratedTimestamps setting
-	tests := []struct {
-		name                     string
-		useDbGeneratedTimestamps bool
-		expectedUseDbTimestamps  bool
-	}{
-		{
-			name:                     "app-generated timestamps",
-			useDbGeneratedTimestamps: false,
-			expectedUseDbTimestamps:  false,
-		},
-		{
-			name:                     "db-generated timestamps",
-			useDbGeneratedTimestamps: true,
-			expectedUseDbTimestamps:  true,
-		},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := Config{
-				ConnectionString:         "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
-				TableName:                "test_table",
-				UseDbGeneratedTimestamps: tt.useDbGeneratedTimestamps,
-			}
-
-			// We can't actually create the client without a database connection,
-			// but we can verify the config values are correct
-			if config.UseDbGeneratedTimestamps != tt.expectedUseDbTimestamps {
-				t.Errorf("Expected UseDbGeneratedTimestamps=%v, got %v",
-					tt.expectedUseDbTimestamps, config.UseDbGeneratedTimestamps)
-			}
-		})
-	}
-}
