@@ -22,11 +22,10 @@ func InitSchema(db *sql.DB, tableName string, useClientTimestamps bool) error {
 
 	quotedTableName := quoteIdentifier(tableName)
 	
-	// Build timestamp column definition
-	timestampColumn := "timestamp TIMESTAMP WITH TIME ZONE NOT NULL"
-	if !useClientTimestamps {
-		// When useClientTimestamps is false, database generates timestamps
-		timestampColumn = "timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP"
+	// Build timestamp column definition - default is database-generated
+	timestampColumn := "timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP"
+	if useClientTimestamps {
+		timestampColumn = "timestamp TIMESTAMP WITH TIME ZONE NOT NULL"
 	}
 	
 	query := fmt.Sprintf(`
