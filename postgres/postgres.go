@@ -11,14 +11,23 @@ import (
 )
 
 // InitSchema creates the necessary tables and indexes if they don't exist.
-// It takes a database connection and table name to initialize the schema.
+// It takes a database connection, table name, and useClientTimestamps flag to initialize the schema.
 // tableName must not be empty.
-func InitSchema(db *sql.DB, tableName string) error {
+// useClientTimestamps controls whether the timestamp column should have DEFAULT CURRENT_TIMESTAMP.
+// When false (default), the database generates timestamps; when true, the application generates them.
+func InitSchema(db *sql.DB, tableName string, useClientTimestamps bool) error {
 	if tableName == "" {
 		return fmt.Errorf("table name must not be empty")
 	}
 
 	quotedTableName := quoteIdentifier(tableName)
+	
+	// Build timestamp column definition - default is database-generated
+	timestampColumn := "timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP"
+	if useClientTimestamps {
+		timestampColumn = "timestamp TIMESTAMP WITH TIME ZONE NOT NULL"
+	}
+	
 	query := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS %s (
 		id SERIAL PRIMARY KEY,
@@ -28,13 +37,13 @@ func InitSchema(db *sql.DB, tableName string) error {
 		event_type VARCHAR(255) NOT NULL,
 		event_data BYTEA NOT NULL,
 		metadata JSONB,
-		timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+		%s
 	);
 
 	CREATE INDEX IF NOT EXISTS %s ON %s(stream_id);
 	CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(stream_id, version);
 	CREATE INDEX IF NOT EXISTS %s ON %s(timestamp);
-	`, quotedTableName,
+	`, quotedTableName, timestampColumn,
 		quoteIdentifier("idx_"+tableName+"_stream_id"), quotedTableName,
 		quoteIdentifier("idx_"+tableName+"_stream_version"), quotedTableName,
 		quoteIdentifier("idx_"+tableName+"_timestamp"), quotedTableName)
@@ -49,16 +58,26 @@ type Config struct {
 	ConnectionString string
 	// TableName is the name of the table to store events. Must not be empty.
 	TableName string
+	// UseClientGeneratedTimestamps controls whether to use client-generated timestamps.
+	// When false (default), the database generates timestamps using DEFAULT CURRENT_TIMESTAMP.
+	// When true, timestamps are generated in the application layer.
+	UseClientGeneratedTimestamps bool
 }
 
 // pgClient contains shared database functionality used by both producer and consumer.
 type pgClient struct {
-	db        *sql.DB
-	tableName string
+	db                        *sql.DB
+	tableName                 string
+	useClientGeneratedTimestamps bool
 }
 
 // newPgClient creates a new shared postgres client with the given configuration.
 func newPgClient(config Config) (*pgClient, error) {
+	tableName := config.TableName
+	if tableName == "" {
+		return nil, fmt.Errorf("table name must not be empty")
+	}
+	
 	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
@@ -68,14 +87,10 @@ func newPgClient(config Config) (*pgClient, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	tableName := config.TableName
-	if tableName == "" {
-		return nil, fmt.Errorf("table name must not be empty")
-	}
-
 	return &pgClient{
-		db:        db,
-		tableName: tableName,
+		db:                        db,
+		tableName:                 tableName,
+		useClientGeneratedTimestamps: config.UseClientGeneratedTimestamps,
 	}, nil
 }
 
@@ -91,13 +106,13 @@ func quoteIdentifier(identifier string) string {
 // buildLoadQuery constructs the SQL query and arguments for loading events.
 func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) (string, []interface{}) {
 	var args []interface{}
-	
+
 	// SELECT clause
 	selectClause := "SELECT event_id, event_type, event_data, metadata, timestamp, version"
-	
-	// FROM clause  
+
+	// FROM clause
 	fromClause := fmt.Sprintf("FROM %s", quoteIdentifier(p.tableName))
-	
+
 	// WHERE clause
 	var whereClause string
 	if opts.Desc {
@@ -114,7 +129,7 @@ func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) 
 		whereClause = "WHERE stream_id = $1 AND version > $2"
 		args = []interface{}{streamID, opts.ExclusiveStartVersion}
 	}
-	
+
 	// ORDER BY clause
 	var orderClause string
 	if opts.Desc {
@@ -122,10 +137,10 @@ func (p *pgClient) buildLoadQuery(streamID string, opts eventstore.LoadOptions) 
 	} else {
 		orderClause = "ORDER BY version ASC"
 	}
-	
+
 	// Build the main query
 	query := fmt.Sprintf("%s\n%s\n%s\n%s", selectClause, fromClause, whereClause, orderClause)
-	
+
 	// LIMIT clause
 	if opts.Limit > 0 {
 		query += fmt.Sprintf("\nLIMIT $%d", len(args)+1)
@@ -181,7 +196,6 @@ func (p *pgClient) loadEvents(streamID string, opts eventstore.LoadOptions) ([]e
 
 	return events, nil
 }
-
 
 // loadEventsByTimestamp retrieves events from all streams using timestamp-based filtering.
 func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
@@ -240,5 +254,3 @@ func (p *pgClient) loadEventsByTimestamp(opts eventstore.ConsumeOptions) ([]even
 
 	return events, nil
 }
-
-

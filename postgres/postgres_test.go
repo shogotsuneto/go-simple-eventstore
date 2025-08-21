@@ -99,11 +99,11 @@ func TestConfig_TableName(t *testing.T) {
 
 func TestInitSchema_EmptyTableName(t *testing.T) {
 	// Test that InitSchema rejects empty table names
-	err := InitSchema(nil, "")
+	err := InitSchema(nil, "", false)
 	if err == nil {
 		t.Error("InitSchema should return error for empty table name")
 	}
-	
+
 	expectedError := "table name must not be empty"
 	if err.Error() != expectedError {
 		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
@@ -112,14 +112,20 @@ func TestInitSchema_EmptyTableName(t *testing.T) {
 
 func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
 	// Test that NewPostgresEventStore returns an error for empty table names
-	store, err := NewPostgresEventStore(nil, "")
+	config := Config{
+		ConnectionString:          "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
+		TableName:                 "", // This should fail before connection is attempted
+		UseClientGeneratedTimestamps: false,
+	}
+	
+	store, err := NewPostgresEventStore(config)
 	if err == nil {
 		t.Error("NewPostgresEventStore should return error for empty table name")
 	}
 	if store != nil {
 		t.Error("NewPostgresEventStore should return nil store for empty table name")
 	}
-	
+
 	expectedError := "table name must not be empty"
 	if err.Error() != expectedError {
 		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
@@ -128,14 +134,20 @@ func TestNewPostgresEventStore_EmptyTableName(t *testing.T) {
 
 func TestNewPostgresEventConsumer_EmptyTableName(t *testing.T) {
 	// Test that NewPostgresEventConsumer returns an error for empty table names
-	consumer, err := NewPostgresEventConsumer(nil, "", 1*time.Second)
+	config := Config{
+		ConnectionString:          "host=localhost port=5432 user=test password=test dbname=test sslmode=disable",
+		TableName:                 "", // This should fail before connection is attempted
+		UseClientGeneratedTimestamps: false,
+	}
+	
+	consumer, err := NewPostgresEventConsumer(config, 1*time.Second)
 	if err == nil {
 		t.Error("NewPostgresEventConsumer should return error for empty table name")
 	}
 	if consumer != nil {
 		t.Error("NewPostgresEventConsumer should return nil consumer for empty table name")
 	}
-	
+
 	expectedError := "table name must not be empty"
 	if err.Error() != expectedError {
 		t.Errorf("Expected error %q, got %q", expectedError, err.Error())
@@ -245,3 +257,18 @@ func TestBuildLoadQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_UseClientGeneratedTimestamps(t *testing.T) {
+	// Test that default config uses database-generated timestamps (UseClientGeneratedTimestamps = false)
+	config := Config{
+		ConnectionString: "test-connection",
+		TableName:        "test_table",
+	}
+	
+	if config.UseClientGeneratedTimestamps != false {
+		t.Errorf("Expected default UseClientGeneratedTimestamps to be false, got %t", config.UseClientGeneratedTimestamps)
+	}
+}
+
+
+

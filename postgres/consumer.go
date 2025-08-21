@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"sync"
 	"time"
 
@@ -18,23 +16,20 @@ type PostgresEventConsumer struct {
 	pollingInterval time.Duration
 }
 
-// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given database connection, table name, and polling interval.
-// tableName must not be empty.
-func NewPostgresEventConsumer(db *sql.DB, tableName string, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
-	if tableName == "" {
-		return nil, fmt.Errorf("table name must not be empty")
-	}
-
+// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration and polling interval.
+func NewPostgresEventConsumer(config Config, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
 	if pollingInterval <= 0 {
 		pollingInterval = 1 * time.Second
 	}
 
+	client, err := newPgClient(config)
+	if err != nil {
+		return nil, err
+	}
+
 	return &PostgresEventConsumer{
-		pgClient: &pgClient{
-			db:        db,
-			tableName: tableName,
-		},
-		subscriptions:   []*PostgresSubscription{}, // Changed to a single slice
+		pgClient:        client,
+		subscriptions:   []*PostgresSubscription{},
 		pollingInterval: pollingInterval,
 	}, nil
 }
@@ -87,7 +82,7 @@ func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
 // PostgresSubscription represents an active subscription to all streams in PostgreSQL.
 type PostgresSubscription struct {
 	fromTimestamp     time.Time
-	processedEventIDs map[string]struct{}          // Track Event.IDs processed within current timestamp
+	processedEventIDs map[string]struct{} // Track Event.IDs processed within current timestamp
 	batchSize         int
 	pollingInterval   time.Duration
 	eventsCh          chan eventstore.Event
@@ -184,19 +179,19 @@ func (s *PostgresSubscription) pollForEvents() {
 
 	for _, event := range events {
 		s.mu.Lock()
-		
+
 		// Check if we've moved to a new timestamp
 		if !event.Timestamp.Equal(s.fromTimestamp) {
 			// Clear processed IDs for new timestamp
 			s.processedEventIDs = make(map[string]struct{})
 		}
-		
+
 		// Skip if we've already processed this Event.ID within the current timestamp
 		if _, processed := s.processedEventIDs[event.ID]; processed {
 			s.mu.Unlock()
 			continue
 		}
-		
+
 		// Mark Event.ID as processed
 		s.processedEventIDs[event.ID] = struct{}{}
 		s.fromTimestamp = event.Timestamp
