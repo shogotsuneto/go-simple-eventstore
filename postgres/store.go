@@ -14,18 +14,15 @@ type PostgresEventStore struct {
 	*pgClient
 }
 
-// NewPostgresEventStore creates a new PostgreSQL event store with the given database connection and table name.
-// tableName must not be empty.
-func NewPostgresEventStore(db *sql.DB, tableName string) (eventstore.EventStore, error) {
-	if tableName == "" {
-		return nil, fmt.Errorf("table name must not be empty")
+// NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
+func NewPostgresEventStore(config Config) (eventstore.EventStore, error) {
+	client, err := newPgClient(config)
+	if err != nil {
+		return nil, err
 	}
 
 	return &PostgresEventStore{
-		pgClient: &pgClient{
-			db:        db,
-			tableName: tableName,
-		},
+		pgClient: client,
 	}, nil
 }
 
@@ -71,13 +68,10 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 		}
 	}
 
-	// Prepare the insert statement
-	stmt, err := tx.Prepare(fmt.Sprintf(`
-		INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, quoteIdentifier(s.tableName)))
+	// Prepare and execute the insert statement
+	stmt, err := s.prepareInsertStatement(tx)
 	if err != nil {
-		return fmt.Errorf("failed to prepare statement: %w", err)
+		return err
 	}
 	defer stmt.Close()
 
@@ -89,11 +83,6 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 			eventID = fmt.Sprintf("%s-%d", streamID, version)
 		}
 
-		timestamp := event.Timestamp
-		if timestamp.IsZero() {
-			timestamp = time.Now()
-		}
-
 		// Convert metadata to JSON
 		var metadataJSON interface{}
 		if event.Metadata != nil {
@@ -103,13 +92,54 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 			}
 		}
 
-		_, err = stmt.Exec(streamID, version, eventID, event.Type, event.Data, metadataJSON, timestamp)
+		err = s.insertEvent(stmt, streamID, version, eventID, event, metadataJSON)
 		if err != nil {
 			return fmt.Errorf("failed to insert event: %w", err)
 		}
 	}
 
 	return tx.Commit()
+}
+
+// prepareInsertStatement creates the appropriate INSERT statement based on timestamp configuration
+func (s *PostgresEventStore) prepareInsertStatement(tx *sql.Tx) (*sql.Stmt, error) {
+	var insertQuery string
+	if !s.useClientGeneratedTimestamps {
+		// Let database generate timestamp with DEFAULT CURRENT_TIMESTAMP
+		insertQuery = fmt.Sprintf(`
+			INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, quoteIdentifier(s.tableName))
+	} else {
+		// Use application-provided timestamp
+		insertQuery = fmt.Sprintf(`
+			INSERT INTO %s (stream_id, version, event_id, event_type, event_data, metadata, timestamp)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, quoteIdentifier(s.tableName))
+	}
+
+	stmt, err := tx.Prepare(insertQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	return stmt, nil
+}
+
+// insertEvent executes the insert statement with appropriate parameters based on timestamp configuration
+func (s *PostgresEventStore) insertEvent(stmt *sql.Stmt, streamID string, version int64, eventID string, event eventstore.Event, metadataJSON interface{}) error {
+	if !s.useClientGeneratedTimestamps {
+		// Insert without timestamp, let database generate it
+		_, err := stmt.Exec(streamID, version, eventID, event.Type, event.Data, metadataJSON)
+		return err
+	} else {
+		// Insert with app-generated timestamp
+		timestamp := event.Timestamp
+		if timestamp.IsZero() {
+			timestamp = time.Now()
+		}
+		_, err := stmt.Exec(streamID, version, eventID, event.Type, event.Data, metadataJSON, timestamp)
+		return err
+	}
 }
 
 // Load retrieves events for the given stream using the specified options.
