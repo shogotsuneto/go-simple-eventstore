@@ -678,10 +678,9 @@ func TestInMemoryEventStore_Subscribe_Close(t *testing.T) {
 	}
 
 	// Verify subscription is removed from store (access internal fields for testing)
-	concreteStore := store.(*InMemoryEventStore)
-	concreteStore.subsMu.RLock()
-	subs := concreteStore.subscriptions
-	concreteStore.subsMu.RUnlock()
+	store.subsMu.RLock()
+	subs := store.subscriptions
+	store.subsMu.RUnlock()
 
 	if len(subs) != 0 {
 		t.Errorf("Expected 0 subscriptions, got %d", len(subs))
@@ -701,10 +700,9 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 	}
 
 	// Verify subscription was created
-	concreteStore := store.(*InMemoryEventStore)
-	concreteStore.subsMu.RLock()
-	subs := concreteStore.subscriptions
-	concreteStore.subsMu.RUnlock()
+	store.subsMu.RLock()
+	subs := store.subscriptions
+	store.subsMu.RUnlock()
 
 	if len(subs) != 1 {
 		t.Errorf("Expected 1 subscription, got %d", len(subs))
@@ -714,9 +712,9 @@ func TestInMemoryEventStore_Close(t *testing.T) {
 	subscription.Close()
 
 	// Verify all subscriptions were closed
-	concreteStore.subsMu.RLock()
-	totalSubs := len(concreteStore.subscriptions)
-	concreteStore.subsMu.RUnlock()
+	store.subsMu.RLock()
+	totalSubs := len(store.subscriptions)
+	store.subsMu.RUnlock()
 
 	if totalSubs != 0 {
 		t.Errorf("Expected 0 subscription streams after close, got %d", totalSubs)
