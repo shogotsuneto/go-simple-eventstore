@@ -42,7 +42,10 @@ func main() {
 	fmt.Println("\n🎉 Consumer example completed successfully!")
 }
 
-func demonstrateRetrieving(store memory.EventStoreConsumer) {
+func demonstrateRetrieving(store interface {
+	eventstore.EventStore
+	eventstore.EventConsumer
+}) {
 	// Add some initial events to different streams
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
@@ -152,7 +155,10 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 	}
 }
 
-func demonstrateSubscriptions(store memory.EventStoreConsumer) {
+func demonstrateSubscriptions(store interface {
+	eventstore.EventStore
+	eventstore.EventConsumer
+}) {
 	streamID1 := "user-789"
 	streamID2 := "user-890"
 

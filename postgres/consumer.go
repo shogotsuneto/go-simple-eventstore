@@ -8,6 +8,9 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
+// Compile-time interface compliance check
+var _ eventstore.EventConsumer = (*PostgresEventConsumer)(nil)
+
 // PostgresEventConsumer provides consumer capabilities using PostgreSQL.
 type PostgresEventConsumer struct {
 	*pgClient
@@ -17,7 +20,7 @@ type PostgresEventConsumer struct {
 }
 
 // NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration and polling interval.
-func NewPostgresEventConsumer(config Config, pollingInterval time.Duration) (eventstore.EventConsumer, error) {
+func NewPostgresEventConsumer(config Config, pollingInterval time.Duration) (*PostgresEventConsumer, error) {
 	if pollingInterval <= 0 {
 		pollingInterval = 1 * time.Second
 	}

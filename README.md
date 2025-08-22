@@ -226,8 +226,18 @@ func main() {
     }
     
     // Create producer and consumer
-    store := postgres.NewPostgresEventStore(db, "events")
-    consumer := postgres.NewPostgresEventConsumer(db, "events", 2*time.Second)
+    config := postgres.Config{
+        ConnectionString: "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable",
+        TableName: "events",
+    }
+    store, err := postgres.NewPostgresEventStore(config)
+    if err != nil {
+        panic(err)
+    }
+    consumer, err := postgres.NewPostgresEventConsumer(config, 2*time.Second)
+    if err != nil {
+        panic(err)
+    }
     
     // Use the same interface as before...
 }

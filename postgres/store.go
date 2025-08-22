@@ -9,13 +9,16 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
+// Compile-time interface compliance check
+var _ eventstore.EventStore = (*PostgresEventStore)(nil)
+
 // PostgresEventStore is a PostgreSQL implementation of EventStore.
 type PostgresEventStore struct {
 	*pgClient
 }
 
 // NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
-func NewPostgresEventStore(config Config) (eventstore.EventStore, error) {
+func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
 	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err

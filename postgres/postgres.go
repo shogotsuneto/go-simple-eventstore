@@ -21,13 +21,13 @@ func InitSchema(db *sql.DB, tableName string, useClientTimestamps bool) error {
 	}
 
 	quotedTableName := quoteIdentifier(tableName)
-	
+
 	// Build timestamp column definition - default is database-generated
 	timestampColumn := "timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP"
 	if useClientTimestamps {
 		timestampColumn = "timestamp TIMESTAMP WITH TIME ZONE NOT NULL"
 	}
-	
+
 	query := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS %s (
 		id SERIAL PRIMARY KEY,
@@ -66,8 +66,8 @@ type Config struct {
 
 // pgClient contains shared database functionality used by both producer and consumer.
 type pgClient struct {
-	db                        *sql.DB
-	tableName                 string
+	db                           *sql.DB
+	tableName                    string
 	useClientGeneratedTimestamps bool
 }
 
@@ -77,7 +77,7 @@ func newPgClient(config Config) (*pgClient, error) {
 	if tableName == "" {
 		return nil, fmt.Errorf("table name must not be empty")
 	}
-	
+
 	db, err := sql.Open("postgres", config.ConnectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
@@ -88,8 +88,8 @@ func newPgClient(config Config) (*pgClient, error) {
 	}
 
 	return &pgClient{
-		db:                        db,
-		tableName:                 tableName,
+		db:                           db,
+		tableName:                    tableName,
 		useClientGeneratedTimestamps: config.UseClientGeneratedTimestamps,
 	}, nil
 }

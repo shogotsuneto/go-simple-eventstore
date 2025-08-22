@@ -8,12 +8,9 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
-// EventStoreConsumer combines both EventStore and EventConsumer interfaces.
-// This is useful for implementations that provide both producer and consumer functionality.
-type EventStoreConsumer interface {
-	eventstore.EventStore
-	eventstore.EventConsumer
-}
+// Compile-time interface compliance checks
+var _ eventstore.EventStore = (*InMemoryEventStore)(nil)
+var _ eventstore.EventConsumer = (*InMemoryEventStore)(nil)
 
 // InMemoryEventStore is a simple in-memory implementation of both EventStore and EventConsumer.
 // This implementation is suitable for testing and demonstration purposes.
@@ -31,7 +28,7 @@ type InMemoryEventStore struct {
 }
 
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
-func NewInMemoryEventStore() EventStoreConsumer {
+func NewInMemoryEventStore() *InMemoryEventStore {
 	return &InMemoryEventStore{
 		streams:       make(map[string][]eventstore.Event),
 		timeline:      make([]eventstore.Event, 0),
