@@ -55,7 +55,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 		if err != nil {
 			return 0, err
 		}
-		return maxVersion, nil
+		return 0, nil
 	}
 
 	// Check expected version for optimistic concurrency control

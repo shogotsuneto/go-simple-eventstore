@@ -963,13 +963,13 @@ func TestInMemoryEventStore_AppendEmptyReturnsCurrentVersion(t *testing.T) {
 		t.Fatalf("Append failed: %v", err)
 	}
 
-	// Test empty append on non-empty stream (should return current version = 2)
+	// Test empty append on non-empty stream (should return 0)
 	latestVersion, err = store.Append("test-stream", []eventstore.Event{}, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 	
-	if latestVersion != 2 {
-		t.Errorf("Expected latest version 2 for empty append on non-empty stream, got %d", latestVersion)
+	if latestVersion != 0 {
+		t.Errorf("Expected latest version 0 for empty append on non-empty stream, got %d", latestVersion)
 	}
 }

@@ -46,7 +46,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	currentVersion := int64(len(stream))
 
 	if len(events) == 0 {
-		return currentVersion, nil
+		return 0, nil
 	}
 
 	// Check expected version for optimistic concurrency control
