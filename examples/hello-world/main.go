@@ -67,12 +67,18 @@ func main() {
 	streamID := "user-123"
 	fmt.Printf("\n📝 Appending %d events to stream '%s'...\n", len(events), streamID)
 
-	err := store.Append(streamID, events, -1)
+	latestVersion, err := store.Append(streamID, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
 
-	fmt.Println("✅ Events appended successfully!")
+	fmt.Printf("✅ Events appended successfully! Latest version: %d\n", latestVersion)
+
+	// Show that the original events are now updated with their assigned versions
+	fmt.Println("\n🏷️  Original events now have assigned versions:")
+	for i, event := range events {
+		fmt.Printf("  Event #%d: %s (Version: %d, ID: %s)\n", i+1, event.Type, event.Version, event.ID)
+	}
 
 	// Load events from the stream
 	fmt.Printf("\n📖 Loading events from stream '%s'...\n", streamID)

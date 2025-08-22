@@ -109,7 +109,7 @@ func main() {
 	streamID := "user-123"
 	fmt.Printf("\n📝 Appending %d events to stream '%s'...\n", len(events), streamID)
 
-	err = store.Append(streamID, events, -1)
+	_, err = store.Append(streamID, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
@@ -167,7 +167,7 @@ func main() {
 		},
 	}
 
-	err = store.Append(streamID, moreEvents, 2)
+	_, err = store.Append(streamID, moreEvents, 2)
 	if err != nil {
 		log.Printf("Expected append failed: %v", err)
 	} else {
@@ -175,7 +175,7 @@ func main() {
 	}
 
 	// Try to append with wrong expected version (should fail)
-	err = store.Append(streamID, moreEvents, 1)
+	_, err = store.Append(streamID, moreEvents, 1)
 	if err != nil {
 		fmt.Printf("✅ Append with wrong expected version correctly failed: %v\n", err)
 	} else {
@@ -230,7 +230,7 @@ func main() {
 	dbTimestampStreamID := "user-456"
 	fmt.Printf("\n📝 Appending %d events with DB-generated timestamps to stream '%s'...\n", len(dbTimestampEvents), dbTimestampStreamID)
 
-	err = dbTimestampStore.Append(dbTimestampStreamID, dbTimestampEvents, -1)
+	_, err = dbTimestampStore.Append(dbTimestampStreamID, dbTimestampEvents, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events with DB timestamps: %v", err)
 	}

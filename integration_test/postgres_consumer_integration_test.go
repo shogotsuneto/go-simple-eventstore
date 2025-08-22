@@ -88,12 +88,12 @@ func TestPostgresEventConsumer_Integration_Retrieve_WithTimestamp(t *testing.T) 
 	streamID1 := "user-123-" + time.Now().Format("20060102150405")
 	streamID2 := "order-456-" + time.Now().Format("20060102150405")
 
-	err := store.Append(streamID1, events1, -1)
+	_, err := store.Append(streamID1, events1, -1)
 	if err != nil {
 		t.Fatalf("Failed to append events to stream1: %v", err)
 	}
 
-	err = store.Append(streamID2, events2, -1)
+	_, err = store.Append(streamID2, events2, -1)
 	if err != nil {
 		t.Fatalf("Failed to append events to stream2: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestPostgresEventConsumer_Integration_Retrieve_WithBatchSize(t *testing.T) 
 	}
 
 	streamID := "batch-test-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Failed to append events: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_RealtimeEvents(t *testing.T
 		}
 
 		streamID := "realtime-stream-" + time.Now().Format("20060102150405")
-		if err := store.Append(streamID, events, -1); err != nil {
+		if _, err := store.Append(streamID, events, -1); err != nil {
 			t.Errorf("Failed to append realtime events: %v", err)
 		}
 	}()
@@ -250,7 +250,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_ExistingEvents(t *testing.T
 	}
 
 	streamID := "existing-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Failed to append existing events: %v", err)
 	}
@@ -316,17 +316,17 @@ func TestPostgresEventConsumer_Integration_Subscribe_MultipleStreams(t *testing.
 	streamID2 := "users-2-" + time.Now().Format("20060102150405")
 	streamID3 := "orders-1-" + time.Now().Format("20060102150405")
 
-	err := store.Append(streamID1, stream1Events, -1)
+	_, err := store.Append(streamID1, stream1Events, -1)
 	if err != nil {
 		t.Fatalf("Failed to append to stream1: %v", err)
 	}
 
-	err = store.Append(streamID2, stream2Events, -1)
+	_, err = store.Append(streamID2, stream2Events, -1)
 	if err != nil {
 		t.Fatalf("Failed to append to stream2: %v", err)
 	}
 
-	err = store.Append(streamID3, stream3Events, -1)
+	_, err = store.Append(streamID3, stream3Events, -1)
 	if err != nil {
 		t.Fatalf("Failed to append to stream3: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestPostgresEventConsumer_Integration_Subscribe_PollingInterval(t *testing.
 		}
 
 		streamID := "polling-stream-" + time.Now().Format("20060102150405")
-		if err := store.Append(streamID, events, -1); err != nil {
+		if _, err := store.Append(streamID, events, -1); err != nil {
 			t.Errorf("Failed to append polling test event: %v", err)
 		}
 	}()
@@ -505,17 +505,17 @@ func TestPostgresEventConsumer_Integration_Retrieve_CrossStreamConsumption(t *te
 	inventoryStreamID := "inventory-789-" + time.Now().Format("20060102150405")
 
 	// Add events across different streams
-	err := store.Append(userStreamID, userEvents, -1)
+	_, err := store.Append(userStreamID, userEvents, -1)
 	if err != nil {
 		t.Fatalf("Failed to append user events: %v", err)
 	}
 
-	err = store.Append(orderStreamID, orderEvents, -1)
+	_, err = store.Append(orderStreamID, orderEvents, -1)
 	if err != nil {
 		t.Fatalf("Failed to append order events: %v", err)
 	}
 
-	err = store.Append(inventoryStreamID, inventoryEvents, -1)
+	_, err = store.Append(inventoryStreamID, inventoryEvents, -1)
 	if err != nil {
 		t.Fatalf("Failed to append inventory events: %v", err)
 	}
@@ -599,7 +599,7 @@ func TestPostgresEventConsumer_Integration_NoDuplicateEvents(t *testing.T) {
 	}
 
 	// Add events to store
-	err := store.Append("test-stream-1", events[:2], -1)
+	_, err := store.Append("test-stream-1", events[:2], -1)
 	if err != nil {
 		t.Fatalf("Failed to append first batch of events: %v", err)
 	}
@@ -631,7 +631,7 @@ func TestPostgresEventConsumer_Integration_NoDuplicateEvents(t *testing.T) {
 	}
 
 	// Add third event after subscription is active
-	err = store.Append("test-stream-2", events[2:3], -1)
+	_, err = store.Append("test-stream-2", events[2:3], -1)
 	if err != nil {
 		t.Fatalf("Failed to append third event: %v", err)
 	}

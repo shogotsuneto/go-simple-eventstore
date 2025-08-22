@@ -44,7 +44,8 @@ type EventStore interface {
 	// - If expectedVersion is -1, the stream can be in any state (no concurrency check)
 	// - If expectedVersion is 0, the stream must not exist (stream creation)
 	// - If expectedVersion > 0, the stream must be at exactly that version
-	Append(streamID string, events []Event, expectedVersion int) error
+	// Returns the latest version number after successful append and updates each event with its assigned version.
+	Append(streamID string, events []Event, expectedVersion int) (int64, error)
 
 	// Load retrieves events for the given stream using the specified options.
 	Load(streamID string, opts LoadOptions) ([]Event, error)
