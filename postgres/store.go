@@ -31,6 +31,10 @@ func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
 
 // Append adds new events to the given stream.
 func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) (int64, error) {
+	if len(events) == 0 {
+		return 0, nil
+	}
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -48,14 +52,6 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	err = tx.QueryRow(fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE stream_id = $1", quoteIdentifier(s.tableName)), streamID).Scan(&maxVersion)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get max version: %w", err)
-	}
-
-	if len(events) == 0 {
-		err = tx.Commit()
-		if err != nil {
-			return 0, err
-		}
-		return 0, nil
 	}
 
 	// Check expected version for optimistic concurrency control
