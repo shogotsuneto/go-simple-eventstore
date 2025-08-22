@@ -188,3 +188,60 @@ Key patterns used throughout the codebase:
 - Examples have 0% unit test coverage (this is expected)
 
 Always validate your changes by running the complete test suite and manually exercising the functionality through the provided examples.
+
+## Breaking Changes Documentation
+
+### CHANGELOG.md Maintenance
+
+**CRITICAL: All breaking changes MUST be documented in CHANGELOG.md**
+
+When making changes that break backward compatibility:
+
+1. **Identify Breaking Changes**
+   - Function signature changes (parameters added, removed, or reordered)
+   - Interface modifications (methods added, removed, or changed)
+   - Configuration struct field changes
+   - Default behavior changes that affect existing usage
+   - Dependency requirement changes (Go version, external dependencies)
+
+2. **Document in CHANGELOG.md**
+   - Add new entries under the appropriate version heading
+   - Use clear "Before/After" code examples
+   - Provide specific migration instructions
+   - Explain the rationale for the change
+   - Follow the existing format and structure
+
+3. **Update Process**
+   ```bash
+   # When making breaking changes:
+   # 1. Update CHANGELOG.md with the breaking change
+   # 2. Include migration examples
+   # 3. Test migration examples work correctly
+   # 4. Include CHANGELOG updates in the same PR as the code changes
+   ```
+
+4. **Required Content for Each Breaking Change**
+   - **Impact statement**: Who is affected and how
+   - **Before/After code examples**: Show the old and new way
+   - **Migration instructions**: Step-by-step guide to update code
+   - **Rationale**: Why the breaking change was necessary
+
+### Examples of Breaking Changes
+
+- Adding required parameters to existing functions
+- Changing function return types or signatures
+- Removing or renaming public interfaces, methods, or fields
+- Changing default configuration values that affect behavior
+- Modifying error types or error handling behavior
+- Updating minimum Go version or dependency requirements
+
+### Non-Breaking Changes (DO NOT document in CHANGELOG.md)
+
+- Adding new optional fields to configuration structs
+- Adding new methods to interfaces (if using interface composition)
+- Bug fixes that restore intended behavior
+- Performance improvements without API changes
+- Internal refactoring without public API impact
+- Documentation updates
+
+The CHANGELOG.md file should remain focused solely on breaking changes to help users understand upgrade requirements.
