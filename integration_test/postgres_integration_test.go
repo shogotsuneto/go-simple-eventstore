@@ -992,3 +992,41 @@ func TestPostgresEventStore_Integration_AppendUpdatesEventVersions(t *testing.T)
 		}
 	}
 }
+
+func TestPostgresEventStore_Integration_AppendEmptyReturnsCurrentVersion(t *testing.T) {
+	store, db := setupTestStore(t, "test_empty_append")
+	defer db.Close()
+
+	streamID := "test-empty-append-" + time.Now().Format("20060102150405")
+
+	// Test empty append on empty stream (should return 0)
+	latestVersion, err := store.Append(streamID, []eventstore.Event{}, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	
+	if latestVersion != 0 {
+		t.Errorf("Expected latest version 0 for empty append on empty stream, got %d", latestVersion)
+	}
+
+	// Add some events to the stream
+	events := []eventstore.Event{
+		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
+		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
+	}
+	
+	_, err = store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	// Test empty append on non-empty stream (should return current version = 2)
+	latestVersion, err = store.Append(streamID, []eventstore.Event{}, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	
+	if latestVersion != 2 {
+		t.Errorf("Expected latest version 2 for empty append on non-empty stream, got %d", latestVersion)
+	}
+}

@@ -38,16 +38,16 @@ func NewInMemoryEventStore() *InMemoryEventStore {
 
 // Append adds new events to the given stream and publishes them to the central timeline.
 func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) (int64, error) {
-	if len(events) == 0 {
-		return 0, nil
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Get current stream (nil if stream does not exist)
 	stream := s.streams[streamID]
 	currentVersion := int64(len(stream))
+
+	if len(events) == 0 {
+		return currentVersion, nil
+	}
 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {

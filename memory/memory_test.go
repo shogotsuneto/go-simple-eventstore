@@ -938,16 +938,38 @@ func TestInMemoryEventStore_AppendUpdatesEventVersions(t *testing.T) {
 	}
 }
 
-// TestInMemoryEventStore_AppendEmptyReturnsZero tests that appending empty slice returns version 0
-func TestInMemoryEventStore_AppendEmptyReturnsZero(t *testing.T) {
+// TestInMemoryEventStore_AppendEmptyReturnsCurrentVersion tests that appending empty slice returns current version
+func TestInMemoryEventStore_AppendEmptyReturnsCurrentVersion(t *testing.T) {
 	store := NewInMemoryEventStore()
 
+	// Test empty append on empty stream (should return 0)
 	latestVersion, err := store.Append("test-stream", []eventstore.Event{}, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 	
 	if latestVersion != 0 {
-		t.Errorf("Expected latest version 0 for empty append, got %d", latestVersion)
+		t.Errorf("Expected latest version 0 for empty append on empty stream, got %d", latestVersion)
+	}
+
+	// Add some events to the stream
+	events := []eventstore.Event{
+		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
+		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
+	}
+	
+	_, err = store.Append("test-stream", events, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	// Test empty append on non-empty stream (should return current version = 2)
+	latestVersion, err = store.Append("test-stream", []eventstore.Event{}, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	
+	if latestVersion != 2 {
+		t.Errorf("Expected latest version 2 for empty append on non-empty stream, got %d", latestVersion)
 	}
 }
