@@ -122,7 +122,7 @@ func TestPostgresEventStore_Integration_Append(t *testing.T) {
 	}
 
 	streamID := "integration-test-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestPostgresEventStore_Integration_Load_WithVersion(t *testing.T) {
 	}
 
 	streamID := "version-test-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestPostgresEventStore_Integration_Load_WithLimit(t *testing.T) {
 	}
 
 	streamID := "limit-test-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -278,7 +278,8 @@ func TestPostgresEventStore_Integration_ConcurrentAppends(t *testing.T) {
 					},
 				},
 			}
-			done <- store.Append(streamID, events, -1)
+			_, err := store.Append(streamID, events, -1)
+			done <- err
 		}(i)
 	}
 	
@@ -320,7 +321,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 	}
 
 	// Should succeed when creating a new stream with expectedVersion 0
-	err := store.Append(streamID, events, 0)
+	_, err := store.Append(streamID, events, 0)
 	if err != nil {
 		t.Fatalf("Expected successful append to new stream with version 0, got error: %v", err)
 	}
@@ -340,7 +341,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NewStream(t *testing.T) 
 	}
 
 	// Should fail when trying to create the same stream again with expectedVersion 0
-	err = store.Append(streamID, events, 0)
+	_, err = store.Append(streamID, events, 0)
 	if err == nil {
 		t.Fatal("Expected error when trying to create existing stream with version 0")
 	}
@@ -356,7 +357,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 	events1 := []eventstore.Event{
 		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
 	}
-	err := store.Append(streamID, events1, 0)
+	_, err := store.Append(streamID, events1, 0)
 	if err != nil {
 		t.Fatalf("Failed to create stream: %v", err)
 	}
@@ -365,7 +366,7 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 	events2 := []eventstore.Event{
 		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
 	}
-	err = store.Append(streamID, events2, 1)
+	_, err = store.Append(streamID, events2, 1)
 	if err != nil {
 		t.Fatalf("Expected successful append with correct expected version, got error: %v", err)
 	}
@@ -391,13 +392,13 @@ func TestPostgresEventStore_Integration_ExpectedVersion_ExactMatch(t *testing.T)
 	events3 := []eventstore.Event{
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
 	}
-	err = store.Append(streamID, events3, 1)
+	_, err = store.Append(streamID, events3, 1)
 	if err == nil {
 		t.Fatal("Expected error when appending with wrong expected version")
 	}
 
 	// Should also fail when trying to append with a higher expected version
-	err = store.Append(streamID, events3, 5)
+	_, err = store.Append(streamID, events3, 5)
 	if err == nil {
 		t.Fatal("Expected error when appending with higher expected version")
 	}
@@ -414,13 +415,13 @@ func TestPostgresEventStore_Integration_ExpectedVersion_NoCheck(t *testing.T) {
 	}
 
 	// Should always succeed with expectedVersion -1 (no check)
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Expected successful append with version -1, got error: %v", err)
 	}
 
 	// Should succeed again with expectedVersion -1
-	err = store.Append(streamID, events, -1)
+	_, err = store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Expected successful append with version -1, got error: %v", err)
 	}
@@ -456,13 +457,13 @@ func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) 
 	// Test ErrStreamAlreadyExists error type
 	t.Run("StreamAlreadyExists", func(t *testing.T) {
 		// Create stream with expectedVersion 0
-		err := store.Append(streamID, events, 0)
+		_, err := store.Append(streamID, events, 0)
 		if err != nil {
 			t.Fatalf("Failed to create stream: %v", err)
 		}
 
 		// Try to create the same stream again with expectedVersion 0
-		err = store.Append(streamID, events, 0)
+		_, err = store.Append(streamID, events, 0)
 		if err == nil {
 			t.Fatal("Expected error when trying to create existing stream")
 		}
@@ -491,7 +492,7 @@ func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) 
 	// Test ErrVersionMismatch error type
 	t.Run("VersionMismatch", func(t *testing.T) {
 		// Try to append with wrong expected version (should expect 1, not 2)
-		err := store.Append(streamID, events, 2) // Stream is at version 1, expecting 2
+		_, err := store.Append(streamID, events, 2) // Stream is at version 1, expecting 2
 		if err == nil {
 			t.Fatal("Expected error when appending with wrong expected version")
 		}
@@ -523,7 +524,7 @@ func TestPostgresEventStore_Integration_ConcurrencyConflictErrors(t *testing.T) 
 	// Test another version mismatch scenario
 	t.Run("VersionMismatchHigher", func(t *testing.T) {
 		// Try to append with higher expected version
-		err := store.Append(streamID, events, 5) // Stream is at version 1, expecting 5
+		_, err := store.Append(streamID, events, 5) // Stream is at version 1, expecting 5
 		if err == nil {
 			t.Fatal("Expected error when appending with higher expected version")
 		}
@@ -575,7 +576,7 @@ func TestPostgresEventStore_Integration_CustomTableName(t *testing.T) {
 	}
 
 	streamID := "custom-table-test-stream-" + time.Now().Format("20060102150405")
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -630,7 +631,7 @@ func TestPostgresEventStore_Load_Desc(t *testing.T) {
 	streamID := fmt.Sprintf("test-stream-desc-%d", time.Now().UnixNano())
 	
 	// Append events to stream
-	err := store.Append(streamID, events, -1)
+	_, err := store.Append(streamID, events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -786,7 +787,7 @@ func TestPostgresEventStore_Integration_ClientGeneratedTimestamps(t *testing.T) 
 		}
 
 		streamID := "test-stream-client-" + fmt.Sprintf("%d", time.Now().UnixNano())
-		err = store.Append(streamID, events, -1)
+		_, err = store.Append(streamID, events, -1)
 		if err != nil {
 			t.Fatalf("Failed to append events: %v", err)
 		}
@@ -819,7 +820,7 @@ func TestPostgresEventStore_Integration_ClientGeneratedTimestamps(t *testing.T) 
 		}
 
 		streamID2 := "test-stream-explicit-" + fmt.Sprintf("%d", time.Now().UnixNano())
-		err = store.Append(streamID2, eventsWithTimestamp, -1)
+		_, err = store.Append(streamID2, eventsWithTimestamp, -1)
 		if err != nil {
 			t.Fatalf("Failed to append events with explicit timestamp: %v", err)
 		}
@@ -889,7 +890,7 @@ func TestPostgresEventStore_Integration_ClientGeneratedTimestamps(t *testing.T) 
 		}
 
 		streamID := "test-stream-mismatch-" + fmt.Sprintf("%d", time.Now().UnixNano())
-		err = store.Append(streamID, events, -1)
+		_, err = store.Append(streamID, events, -1)
 		
 		// We expect this to fail with a database error about NOT NULL constraint
 		if err == nil {
@@ -909,4 +910,85 @@ func TestPostgresEventStore_Integration_ClientGeneratedTimestamps(t *testing.T) 
 			t.Fatalf("Failed to clean up table: %v", err)
 		}
 	})
+}// TestPostgresEventStore_Integration_AppendReturnsVersion tests that Append returns the correct latest version for PostgreSQL
+func TestPostgresEventStore_Integration_AppendReturnsVersion(t *testing.T) {
+	store, db := setupTestStore(t, "test_version_return")
+	defer db.Close()
+
+	streamID := "test-version-return-" + time.Now().Format("20060102150405")
+
+	// Test appending to empty stream
+	events1 := []eventstore.Event{
+		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
+		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
+	}
+	
+	latestVersion, err := store.Append(streamID, events1, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	
+	if latestVersion != 2 {
+		t.Errorf("Expected latest version 2, got %d", latestVersion)
+	}
+
+	// Test appending more events
+	events2 := []eventstore.Event{
+		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
+	}
+	
+	latestVersion, err = store.Append(streamID, events2, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	
+	if latestVersion != 3 {
+		t.Errorf("Expected latest version 3, got %d", latestVersion)
+	}
+}
+
+// TestPostgresEventStore_Integration_AppendUpdatesEventVersions tests that Append updates the event versions for PostgreSQL
+func TestPostgresEventStore_Integration_AppendUpdatesEventVersions(t *testing.T) {
+	store, db := setupTestStore(t, "test_version_update")
+	defer db.Close()
+
+	streamID := "test-version-update-" + time.Now().Format("20060102150405")
+
+	events := []eventstore.Event{
+		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
+		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
+		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
+	}
+	
+	// Verify events don't have versions initially
+	for i, event := range events {
+		if event.Version != 0 {
+			t.Errorf("Event %d should have version 0 initially, got %d", i, event.Version)
+		}
+	}
+	
+	latestVersion, err := store.Append(streamID, events, -1)
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	
+	if latestVersion != 3 {
+		t.Errorf("Expected latest version 3, got %d", latestVersion)
+	}
+	
+	// Verify events now have correct versions
+	expectedVersions := []int64{1, 2, 3}
+	for i, event := range events {
+		if event.Version != expectedVersions[i] {
+			t.Errorf("Event %d should have version %d, got %d", i, expectedVersions[i], event.Version)
+		}
+	}
+	
+	// Verify events have IDs assigned if they were empty
+	for i, event := range events {
+		expectedID := fmt.Sprintf("%s-%d", streamID, expectedVersions[i])
+		if event.ID != expectedID {
+			t.Errorf("Event %d should have ID %s, got %s", i, expectedID, event.ID)
+		}
+	}
 }

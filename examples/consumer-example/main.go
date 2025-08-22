@@ -65,7 +65,7 @@ func demonstrateRetrieving(store interface {
 	}
 
 	streamID1 := "user-456"
-	err := store.Append(streamID1, events, -1)
+	_, err := store.Append(streamID1, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
@@ -91,7 +91,7 @@ func demonstrateRetrieving(store interface {
 	}
 
 	streamID2 := "user-789"
-	err = store.Append(streamID2, events2, -1)
+	_, err = store.Append(streamID2, events2, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
@@ -134,7 +134,7 @@ func demonstrateRetrieving(store interface {
 		},
 	}
 
-	err = store.Append(streamID1, moreEvents, -1)
+	_, err = store.Append(streamID1, moreEvents, -1)
 	if err != nil {
 		log.Fatalf("Failed to append more events: %v", err)
 	}
@@ -209,7 +209,7 @@ func demonstrateSubscriptions(store interface {
 		},
 	}
 
-	err = store.Append(streamID1, events1, -1)
+	_, err = store.Append(streamID1, events1, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events to stream 1: %v", err)
 	}
@@ -234,7 +234,7 @@ func demonstrateSubscriptions(store interface {
 		},
 	}
 
-	err = store.Append(streamID2, events2, -1)
+	_, err = store.Append(streamID2, events2, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events to stream 2: %v", err)
 	}
@@ -258,7 +258,7 @@ func demonstrateSubscriptions(store interface {
 		},
 	}
 
-	err = store.Append(streamID1, events3, -1)
+	_, err = store.Append(streamID1, events3, -1)
 	if err != nil {
 		log.Fatalf("Failed to append third event: %v", err)
 	}
@@ -313,7 +313,7 @@ func demonstrateSubscriptions(store interface {
 		},
 	}
 
-	err = store.Append(streamID2, finalEvents, -1)
+	_, err = store.Append(streamID2, finalEvents, -1)
 	if err != nil {
 		log.Fatalf("Failed to append final event: %v", err)
 	}

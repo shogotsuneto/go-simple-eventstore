@@ -37,9 +37,9 @@ func NewInMemoryEventStore() *InMemoryEventStore {
 }
 
 // Append adds new events to the given stream and publishes them to the central timeline.
-func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
+func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) (int64, error) {
 	if len(events) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	s.mu.Lock()
@@ -52,13 +52,13 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {
 		if expectedVersion == 0 && currentVersion != 0 {
-			return &eventstore.ErrStreamAlreadyExists{
+			return 0, &eventstore.ErrStreamAlreadyExists{
 				StreamID:      streamID,
 				ActualVersion: currentVersion,
 			}
 		}
 		if expectedVersion > 0 && currentVersion != int64(expectedVersion) {
-			return &eventstore.ErrVersionMismatch{
+			return 0, &eventstore.ErrVersionMismatch{
 				StreamID:        streamID,
 				ExpectedVersion: expectedVersion,
 				ActualVersion:   currentVersion,
@@ -67,32 +67,38 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	}
 
 	// Set version and timestamp for each event
-	// Make copies to avoid modifying the original events passed by the caller
+	// Update the original events with their assigned versions and create copies for storage
 	eventsToStore := make([]eventstore.Event, len(events))
-	for i, event := range events {
-		// Create a copy of the event
-		eventCopy := eventstore.Event{
-			ID:        event.ID,
-			Type:      event.Type,
-			Data:      make([]byte, len(event.Data)),
-			Timestamp: event.Timestamp,
-			Version:   currentVersion + int64(i) + 1,
+	var latestVersion int64
+	for i := range events {
+		newVersion := currentVersion + int64(i) + 1
+		latestVersion = newVersion
+		
+		// Update the original event with the assigned version
+		events[i].Version = newVersion
+		if events[i].Timestamp.IsZero() {
+			events[i].Timestamp = time.Now()
 		}
-		copy(eventCopy.Data, event.Data)
+		if events[i].ID == "" {
+			events[i].ID = fmt.Sprintf("%s-%d", streamID, newVersion)
+		}
+
+		// Create a copy for storage
+		eventCopy := eventstore.Event{
+			ID:        events[i].ID,
+			Type:      events[i].Type,
+			Data:      make([]byte, len(events[i].Data)),
+			Timestamp: events[i].Timestamp,
+			Version:   newVersion,
+		}
+		copy(eventCopy.Data, events[i].Data)
 
 		// Copy metadata
-		if event.Metadata != nil {
+		if events[i].Metadata != nil {
 			eventCopy.Metadata = make(map[string]string)
-			for k, v := range event.Metadata {
+			for k, v := range events[i].Metadata {
 				eventCopy.Metadata[k] = v
 			}
-		}
-
-		if eventCopy.Timestamp.IsZero() {
-			eventCopy.Timestamp = time.Now()
-		}
-		if eventCopy.ID == "" {
-			eventCopy.ID = fmt.Sprintf("%s-%d", streamID, eventCopy.Version)
 		}
 
 		eventsToStore[i] = eventCopy
@@ -107,7 +113,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	// Notify subscriptions about new events
 	s.notifySubscriptions(eventsToStore)
 
-	return nil
+	return latestVersion, nil
 }
 
 // addEventsToTimeline adds events to the central timeline maintaining chronological order.
