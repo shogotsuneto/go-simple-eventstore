@@ -993,7 +993,7 @@ func TestPostgresEventStore_Integration_AppendUpdatesEventVersions(t *testing.T)
 	}
 }
 
-func TestPostgresEventStore_Integration_AppendEmptyReturnsCurrentVersion(t *testing.T) {
+func TestPostgresEventStore_Integration_AppendEmptyReturnsZero(t *testing.T) {
 	store, db := setupTestStore(t, "test_empty_append")
 	defer db.Close()
 

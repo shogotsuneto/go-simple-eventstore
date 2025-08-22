@@ -938,8 +938,8 @@ func TestInMemoryEventStore_AppendUpdatesEventVersions(t *testing.T) {
 	}
 }
 
-// TestInMemoryEventStore_AppendEmptyReturnsCurrentVersion tests that appending empty slice returns current version
-func TestInMemoryEventStore_AppendEmptyReturnsCurrentVersion(t *testing.T) {
+// TestInMemoryEventStore_AppendEmptyReturnsZero tests that appending empty slice always returns zero
+func TestInMemoryEventStore_AppendEmptyReturnsZero(t *testing.T) {
 	store := NewInMemoryEventStore()
 
 	// Test empty append on empty stream (should return 0)
