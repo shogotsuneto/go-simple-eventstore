@@ -19,11 +19,13 @@ package eventstore
 
 type EventStore interface {
     // Append adds new events to the given stream.
+    // Returns the latest version number after successful append.
+    // For empty appends (no events), always returns 0.
     // expectedVersion is used for optimistic concurrency control:
     // - If expectedVersion is -1, the stream can be in any state (no concurrency check)
     // - If expectedVersion is 0, the stream must not exist (stream creation)  
     // - If expectedVersion > 0, the stream must be at exactly that version
-    Append(streamID string, events []Event, expectedVersion int) error
+    Append(streamID string, events []Event, expectedVersion int) (int64, error)
 
     // Load retrieves events for the given stream using the specified options.
     Load(streamID string, opts LoadOptions) ([]Event, error)
@@ -44,6 +46,35 @@ type EventSubscription interface {
     // Close stops the subscription and releases resources
     Close() error
 }
+```
+
+## 📝 Append Behavior
+
+The `Append` method has the following behavior:
+
+- **Non-empty appends**: Returns the latest version number after successful append (version of the last event added)
+- **Empty appends**: Always returns `0`, regardless of the current stream state
+  - Empty append on empty stream: returns `0`
+  - Empty append on non-empty stream: returns `0` (not the current version)
+- **Event updates**: Events passed to `Append` are updated in-place with their assigned versions, IDs, and timestamps
+- **Optimistic concurrency**: Uses `expectedVersion` parameter for conflict detection
+
+### Example
+
+```go
+// Append some events
+events := []eventstore.Event{
+    {Type: "UserCreated", Data: userData},
+    {Type: "UserEmailChanged", Data: emailData},
+}
+
+latestVersion, err := store.Append("user-123", events, -1)
+// latestVersion will be 2 (version of the last event)
+// events[0].Version will be 1, events[1].Version will be 2
+
+// Empty append always returns 0
+version, err := store.Append("user-123", []eventstore.Event{}, -1)
+// version will be 0 (not the current stream version)
 ```
 
 ## ⚙️ Configuration Options
@@ -125,7 +156,7 @@ func main() {
     }
     
     // Append events to a stream
-    err := store.Append("user-123", events, -1)
+    latestVersion, err := store.Append("user-123", events, -1)
     if err != nil {
         panic(err)
     }
@@ -226,8 +257,18 @@ func main() {
     }
     
     // Create producer and consumer
-    store := postgres.NewPostgresEventStore(db, "events")
-    consumer := postgres.NewPostgresEventConsumer(db, "events", 2*time.Second)
+    config := postgres.Config{
+        ConnectionString: "host=localhost port=5432 user=postgres password=password dbname=eventstore sslmode=disable",
+        TableName: "events",
+    }
+    store, err := postgres.NewPostgresEventStore(config)
+    if err != nil {
+        panic(err)
+    }
+    consumer, err := postgres.NewPostgresEventConsumer(config, 2*time.Second)
+    if err != nil {
+        panic(err)
+    }
     
     // Use the same interface as before...
 }

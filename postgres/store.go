@@ -9,13 +9,16 @@ import (
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
+// Compile-time interface compliance check
+var _ eventstore.EventStore = (*PostgresEventStore)(nil)
+
 // PostgresEventStore is a PostgreSQL implementation of EventStore.
 type PostgresEventStore struct {
 	*pgClient
 }
 
 // NewPostgresEventStore creates a new PostgreSQL event store with the given configuration.
-func NewPostgresEventStore(config Config) (eventstore.EventStore, error) {
+func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
 	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err
@@ -27,40 +30,40 @@ func NewPostgresEventStore(config Config) (eventstore.EventStore, error) {
 }
 
 // Append adds new events to the given stream.
-func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) error {
+func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) (int64, error) {
 	if len(events) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
 	// Lock the stream to prevent concurrent appends
 	_, err = tx.Exec("SELECT pg_advisory_xact_lock(hashtext($1))", streamID)
 	if err != nil {
-		return fmt.Errorf("failed to acquire lock: %w", err)
+		return 0, fmt.Errorf("failed to acquire lock: %w", err)
 	}
 
 	// Get the current maximum version for this stream
 	var maxVersion int64
 	err = tx.QueryRow(fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE stream_id = $1", quoteIdentifier(s.tableName)), streamID).Scan(&maxVersion)
 	if err != nil {
-		return fmt.Errorf("failed to get max version: %w", err)
+		return 0, fmt.Errorf("failed to get max version: %w", err)
 	}
 
 	// Check expected version for optimistic concurrency control
 	if expectedVersion != -1 {
 		if expectedVersion == 0 && maxVersion != 0 {
-			return &eventstore.ErrStreamAlreadyExists{
+			return 0, &eventstore.ErrStreamAlreadyExists{
 				StreamID:      streamID,
 				ActualVersion: maxVersion,
 			}
 		}
 		if expectedVersion > 0 && maxVersion != int64(expectedVersion) {
-			return &eventstore.ErrVersionMismatch{
+			return 0, &eventstore.ErrVersionMismatch{
 				StreamID:        streamID,
 				ExpectedVersion: expectedVersion,
 				ActualVersion:   maxVersion,
@@ -71,34 +74,48 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	// Prepare and execute the insert statement
 	stmt, err := s.prepareInsertStatement(tx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer stmt.Close()
 
-	// Insert each event
-	for i, event := range events {
+	// Insert each event and update the original events with their versions
+	var latestVersion int64
+	for i := range events {
 		version := maxVersion + int64(i) + 1
-		eventID := event.ID
-		if eventID == "" {
-			eventID = fmt.Sprintf("%s-%d", streamID, version)
+		latestVersion = version
+		
+		// Update the original event with the assigned version
+		events[i].Version = version
+		if events[i].Timestamp.IsZero() {
+			events[i].Timestamp = time.Now()
 		}
+		if events[i].ID == "" {
+			events[i].ID = fmt.Sprintf("%s-%d", streamID, version)
+		}
+
+		eventID := events[i].ID
 
 		// Convert metadata to JSON
 		var metadataJSON interface{}
-		if event.Metadata != nil {
-			metadataJSON, err = json.Marshal(event.Metadata)
+		if events[i].Metadata != nil {
+			metadataJSON, err = json.Marshal(events[i].Metadata)
 			if err != nil {
-				return fmt.Errorf("failed to marshal metadata: %w", err)
+				return 0, fmt.Errorf("failed to marshal metadata: %w", err)
 			}
 		}
 
-		err = s.insertEvent(stmt, streamID, version, eventID, event, metadataJSON)
+		err = s.insertEvent(stmt, streamID, version, eventID, events[i], metadataJSON)
 		if err != nil {
-			return fmt.Errorf("failed to insert event: %w", err)
+			return 0, fmt.Errorf("failed to insert event: %w", err)
 		}
 	}
 
-	return tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		return 0, err
+	}
+	
+	return latestVersion, nil
 }
 
 // prepareInsertStatement creates the appropriate INSERT statement based on timestamp configuration

@@ -188,3 +188,69 @@ Key patterns used throughout the codebase:
 - Examples have 0% unit test coverage (this is expected)
 
 Always validate your changes by running the complete test suite and manually exercising the functionality through the provided examples.
+
+## Breaking Changes Documentation
+
+### CHANGELOG.md Maintenance
+
+**CRITICAL: All user-relevant changes MUST be documented in CHANGELOG.md**
+
+When making any user-facing changes:
+
+1. **Identify User-Relevant Changes**
+   - **Breaking Changes**: Function signatures, interface modifications, configuration changes, default behavior changes, dependency requirements
+   - **New Features**: New APIs, functionality, configuration options, adapters
+   - **Improvements**: Performance enhancements, better error messages, enhanced reliability
+   - **Bug Fixes**: Fixes that restore intended behavior or resolve user-reported issues
+
+2. **Document in CHANGELOG.md**
+   - Add entries under the appropriate version heading or "Unreleased" section
+   - Use concise headlines with emoji prefixes for easy scanning:
+     - ⚠️ Breaking Changes
+     - ✨ Features  
+     - 🐛 Bug Fixes
+     - 🔧 Improvements
+   - Keep descriptions brief and focused on user impact
+   - Follow the existing format and structure
+
+3. **Update Process**
+   ```bash
+   # When making user-relevant changes:
+   # 1. Update CHANGELOG.md with concise headline description
+   # 2. Include under appropriate category (Breaking/Features/Fixes/Improvements)
+   # 3. Include CHANGELOG updates in the same PR as the code changes
+   ```
+
+4. **Content Guidelines**
+   - **Headlines should be concise**: Focus on what changed, not how
+   - **User-focused language**: Describe impact to library users, not internal details
+   - **No code examples needed**: Keep it brief, users can refer to documentation for details
+   - **Breaking changes get priority**: Always list breaking changes first
+
+### Examples of User-Relevant Changes
+
+**Breaking Changes:**
+- EventStore.Append signature change: Now returns (int64, error)
+- PostgreSQL Config struct change: Added UseClientGeneratedTimestamps field
+
+**Features:**
+- PostgreSQL configurable table names: Added support for custom table names
+- Descending load logic: Added support for loading events in descending order
+
+**Bug Fixes:**
+- Fixed race condition in concurrent event appends
+- Corrected version calculation for empty streams
+
+**Improvements:**
+- Enhanced error messages for connection failures
+- Improved PostgreSQL connection pooling performance
+
+### Changes NOT to Document
+
+- Internal refactoring without user-visible impact
+- Documentation-only updates  
+- Build system or CI/CD changes
+- Development tooling changes
+- Code style or formatting changes
+
+The CHANGELOG.md file should help users quickly understand what changed between versions and assess upgrade impact.

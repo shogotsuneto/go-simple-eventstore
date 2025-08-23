@@ -1,0 +1,140 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.0.6)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Check source branch
+      run: |
+        if [ "${{ github.ref_name }}" != "main" ]; then
+          echo "Error: This workflow can only be run from the main branch"
+          echo "Current branch: ${{ github.ref_name }}"
+          echo "Required branch: main"
+          exit 1
+        fi
+        echo "✅ Confirmed running from main branch"
+    
+    - name: Validate version format
+      run: |
+        if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Error: Version must be in format vX.Y.Z (e.g., v0.0.6)"
+          exit 1
+        fi
+    
+    - name: Check if version already exists
+      run: |
+        if git tag -l | grep -q "^${{ inputs.version }}$"; then
+          echo "Error: Version ${{ inputs.version }} already exists"
+          exit 1
+        fi
+    
+    - name: Extract unreleased content from CHANGELOG
+      id: changelog
+      run: |
+        # Extract content between [Unreleased] and the next version section
+        content=$(awk '
+          /## \[Unreleased\]/ { start=1; next }
+          /## \[v[0-9]+\.[0-9]+\.[0-9]+\]/ && start { exit }
+          start && /^$/ { if (collecting) print; next }
+          start && /^###/ { collecting=1 }
+          start && collecting { print }
+        ' CHANGELOG.md | sed '/^$/N;/^\n$/d')
+        
+        if [ -z "$content" ]; then
+          echo "Error: No unreleased content found in CHANGELOG.md"
+          exit 1
+        fi
+        
+        # Save content to file for GitHub release
+        echo "$content" > release_notes.md
+    
+    - name: Create draft release
+      id: create_release
+      run: |
+        # Create the draft release and capture the output
+        release_output=$(gh release create "${{ inputs.version }}" \
+          --title "Release ${{ inputs.version }}" \
+          --notes-file release_notes.md \
+          --draft \
+          --target main)
+        
+        # Extract the release URL
+        release_url="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.version }}"
+        
+        echo "html_url=${release_url}" >> $GITHUB_OUTPUT
+        echo "✅ Draft release created: ${release_url}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update CHANGELOG for new version
+      run: |
+        # Get current date
+        current_date=$(date +%Y-%m-%d)
+        
+        # Create updated CHANGELOG
+        awk -v version="${{ inputs.version }}" -v date="$current_date" '
+          /## \[Unreleased\]/ {
+            print "## [Unreleased]"
+            print ""
+            print "## [" version "] - " date
+            found_unreleased=1
+            next
+          }
+          found_unreleased && /## \[v[0-9]+\.[0-9]+\.[0-9]+\]/ {
+            print
+            found_unreleased=0
+            next
+          }
+          { print }
+        ' CHANGELOG.md > CHANGELOG_new.md
+        
+        mv CHANGELOG_new.md CHANGELOG.md
+    
+    - name: Create Pull Request for CHANGELOG update
+      id: create_pr
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "chore: update CHANGELOG.md for release ${{ inputs.version }}"
+        title: "chore: update CHANGELOG.md for release ${{ inputs.version }}"
+        body: |
+          This PR updates the CHANGELOG.md to prepare for release ${{ inputs.version }}.
+          
+          Changes:
+          - Moved unreleased content to version ${{ inputs.version }}
+          - Added new empty "Unreleased" section
+          
+          This PR was automatically created by the release workflow.
+          
+          **Related Release:** [Draft Release ${{ inputs.version }}](${{ steps.create_release.outputs.html_url }})
+        branch: release/${{ inputs.version }}
+        base: develop
+        delete-branch: true
+    
+    - name: Output results
+      run: |
+        echo "✅ Draft release created: ${{ steps.create_release.outputs.html_url }}"
+        echo "✅ Pull request created: ${{ steps.create_pr.outputs.pull-request-url }}"
+        echo ""
+        echo "Next steps:"
+        echo "1. Review and merge the pull request: ${{ steps.create_pr.outputs.pull-request-url }}"
+        echo "2. Review and publish the draft release: ${{ steps.create_release.outputs.html_url }}"

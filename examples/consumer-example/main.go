@@ -42,7 +42,10 @@ func main() {
 	fmt.Println("\n🎉 Consumer example completed successfully!")
 }
 
-func demonstrateRetrieving(store memory.EventStoreConsumer) {
+func demonstrateRetrieving(store interface {
+	eventstore.EventStore
+	eventstore.EventConsumer
+}) {
 	// Add some initial events to different streams
 	userCreatedData, _ := json.Marshal(UserCreated{
 		UserID: "user-456",
@@ -62,7 +65,7 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 	}
 
 	streamID1 := "user-456"
-	err := store.Append(streamID1, events, -1)
+	_, err := store.Append(streamID1, events, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
@@ -88,7 +91,7 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 	}
 
 	streamID2 := "user-789"
-	err = store.Append(streamID2, events2, -1)
+	_, err = store.Append(streamID2, events2, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events: %v", err)
 	}
@@ -131,7 +134,7 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID1, moreEvents, -1)
+	_, err = store.Append(streamID1, moreEvents, -1)
 	if err != nil {
 		log.Fatalf("Failed to append more events: %v", err)
 	}
@@ -152,7 +155,10 @@ func demonstrateRetrieving(store memory.EventStoreConsumer) {
 	}
 }
 
-func demonstrateSubscriptions(store memory.EventStoreConsumer) {
+func demonstrateSubscriptions(store interface {
+	eventstore.EventStore
+	eventstore.EventConsumer
+}) {
 	streamID1 := "user-789"
 	streamID2 := "user-890"
 
@@ -203,7 +209,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID1, events1, -1)
+	_, err = store.Append(streamID1, events1, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events to stream 1: %v", err)
 	}
@@ -228,7 +234,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID2, events2, -1)
+	_, err = store.Append(streamID2, events2, -1)
 	if err != nil {
 		log.Fatalf("Failed to append events to stream 2: %v", err)
 	}
@@ -252,7 +258,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID1, events3, -1)
+	_, err = store.Append(streamID1, events3, -1)
 	if err != nil {
 		log.Fatalf("Failed to append third event: %v", err)
 	}
@@ -307,7 +313,7 @@ func demonstrateSubscriptions(store memory.EventStoreConsumer) {
 		},
 	}
 
-	err = store.Append(streamID2, finalEvents, -1)
+	_, err = store.Append(streamID2, finalEvents, -1)
 	if err != nil {
 		log.Fatalf("Failed to append final event: %v", err)
 	}
