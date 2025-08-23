@@ -58,11 +58,6 @@ jobs:
         
         # Save content to file for GitHub release
         echo "$content" > release_notes.md
-        
-        # Output for use in subsequent steps  
-        echo "content<<EOF" >> $GITHUB_OUTPUT
-        echo "$content" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
     
     - name: Create draft release
       id: create_release
