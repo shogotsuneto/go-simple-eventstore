@@ -2,6 +2,8 @@ name: Create Release
 
 on:
   workflow_dispatch:
+    branches:
+      - main
     inputs:
       version:
         description: 'Version to release (e.g., v0.0.6)'
@@ -70,7 +72,7 @@ jobs:
           --title "Release ${{ inputs.version }}" \
           --notes-file release_notes.md \
           --draft \
-          --target ${{ github.ref_name }})
+          --target main)
         
         # Extract the release URL
         release_url="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.version }}"

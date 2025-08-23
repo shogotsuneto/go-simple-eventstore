@@ -9,6 +9,8 @@ This repository includes an automated release pipeline that helps create release
    - Follow the existing format with categories: ⚠️ Breaking Changes, ✨ Features, 🐛 Bug Fixes, 🔧 Improvements
 
 2. **Trigger the Release Workflow**
+   - **Important**: The workflow can only be triggered from the `main` branch
+   - Switch to the `main` branch if you're not already on it
    - Go to the "Actions" tab in GitHub
    - Select the "Create Release" workflow
    - Click "Run workflow" 
@@ -29,6 +31,7 @@ This repository includes an automated release pipeline that helps create release
 - Extracts content from the `[Unreleased]` section of CHANGELOG.md
 - Creates a draft GitHub release with that content as release notes
 - Uses the specified version as the release tag and title
+- Targets the `main` branch for the release
 
 ### CHANGELOG Update PR
 - Moves content from `[Unreleased]` to a new version section with current date
@@ -61,6 +64,7 @@ The workflow will fail if:
 - Version format is invalid
 - Version already exists as a git tag
 - No unreleased content is found in CHANGELOG.md
+- Workflow is triggered from a branch other than `main`
 - GitHub API calls fail
 
 ## Manual Steps After Automation
