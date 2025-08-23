@@ -2,8 +2,6 @@ name: Create Release
 
 on:
   workflow_dispatch:
-    branches:
-      - main
     inputs:
       version:
         description: 'Version to release (e.g., v0.0.6)'
@@ -24,6 +22,16 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
+    
+    - name: Check source branch
+      run: |
+        if [ "${{ github.ref_name }}" != "main" ]; then
+          echo "Error: This workflow can only be run from the main branch"
+          echo "Current branch: ${{ github.ref_name }}"
+          echo "Required branch: main"
+          exit 1
+        fi
+        echo "✅ Confirmed running from main branch"
     
     - name: Validate version format
       run: |
