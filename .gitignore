@@ -24,6 +24,9 @@ examples/consumer-example/consumer-example
 # Output of the go coverage tool
 *.out
 
+# release notes (GitHub actions)
+release_notes.md
+
 # IDE files
 .idea/
 .vscode/

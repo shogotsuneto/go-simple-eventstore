@@ -4,6 +4,8 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 
 ## [Unreleased]
 
+## [v0.0.6] - 2025-08-23
+
 ### ⚠️ Breaking Changes
 - **EventStore.Append signature change**: Now returns `(int64, error)` instead of `error` to provide latest version after append
 - **Empty append behavior**: Empty appends now always return version `0` regardless of current stream state
