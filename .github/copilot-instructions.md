@@ -193,55 +193,64 @@ Always validate your changes by running the complete test suite and manually exe
 
 ### CHANGELOG.md Maintenance
 
-**CRITICAL: All breaking changes MUST be documented in CHANGELOG.md**
+**CRITICAL: All user-relevant changes MUST be documented in CHANGELOG.md**
 
-When making changes that break backward compatibility:
+When making any user-facing changes:
 
-1. **Identify Breaking Changes**
-   - Function signature changes (parameters added, removed, or reordered)
-   - Interface modifications (methods added, removed, or changed)
-   - Configuration struct field changes
-   - Default behavior changes that affect existing usage
-   - Dependency requirement changes (Go version, external dependencies)
+1. **Identify User-Relevant Changes**
+   - **Breaking Changes**: Function signatures, interface modifications, configuration changes, default behavior changes, dependency requirements
+   - **New Features**: New APIs, functionality, configuration options, adapters
+   - **Improvements**: Performance enhancements, better error messages, enhanced reliability
+   - **Bug Fixes**: Fixes that restore intended behavior or resolve user-reported issues
 
 2. **Document in CHANGELOG.md**
-   - Add new entries under the appropriate version heading
-   - Use clear "Before/After" code examples
-   - Provide specific migration instructions
-   - Explain the rationale for the change
+   - Add entries under the appropriate version heading or "Unreleased" section
+   - Use concise headlines with emoji prefixes for easy scanning:
+     - ⚠️ Breaking Changes
+     - ✨ Features  
+     - 🐛 Bug Fixes
+     - 🔧 Improvements
+   - Keep descriptions brief and focused on user impact
    - Follow the existing format and structure
 
 3. **Update Process**
    ```bash
-   # When making breaking changes:
-   # 1. Update CHANGELOG.md with the breaking change
-   # 2. Include migration examples
-   # 3. Test migration examples work correctly
-   # 4. Include CHANGELOG updates in the same PR as the code changes
+   # When making user-relevant changes:
+   # 1. Update CHANGELOG.md with concise headline description
+   # 2. Include under appropriate category (Breaking/Features/Fixes/Improvements)
+   # 3. Include CHANGELOG updates in the same PR as the code changes
    ```
 
-4. **Required Content for Each Breaking Change**
-   - **Impact statement**: Who is affected and how
-   - **Before/After code examples**: Show the old and new way
-   - **Migration instructions**: Step-by-step guide to update code
-   - **Rationale**: Why the breaking change was necessary
+4. **Content Guidelines**
+   - **Headlines should be concise**: Focus on what changed, not how
+   - **User-focused language**: Describe impact to library users, not internal details
+   - **No code examples needed**: Keep it brief, users can refer to documentation for details
+   - **Breaking changes get priority**: Always list breaking changes first
 
-### Examples of Breaking Changes
+### Examples of User-Relevant Changes
 
-- Adding required parameters to existing functions
-- Changing function return types or signatures
-- Removing or renaming public interfaces, methods, or fields
-- Changing default configuration values that affect behavior
-- Modifying error types or error handling behavior
-- Updating minimum Go version or dependency requirements
+**Breaking Changes:**
+- EventStore.Append signature change: Now returns (int64, error)
+- PostgreSQL Config struct change: Added UseClientGeneratedTimestamps field
 
-### Non-Breaking Changes (DO NOT document in CHANGELOG.md)
+**Features:**
+- PostgreSQL configurable table names: Added support for custom table names
+- Descending load logic: Added support for loading events in descending order
 
-- Adding new optional fields to configuration structs
-- Adding new methods to interfaces (if using interface composition)
-- Bug fixes that restore intended behavior
-- Performance improvements without API changes
-- Internal refactoring without public API impact
-- Documentation updates
+**Bug Fixes:**
+- Fixed race condition in concurrent event appends
+- Corrected version calculation for empty streams
 
-The CHANGELOG.md file should remain focused solely on breaking changes to help users understand upgrade requirements.
+**Improvements:**
+- Enhanced error messages for connection failures
+- Improved PostgreSQL connection pooling performance
+
+### Changes NOT to Document
+
+- Internal refactoring without user-visible impact
+- Documentation-only updates  
+- Build system or CI/CD changes
+- Development tooling changes
+- Code style or formatting changes
+
+The CHANGELOG.md file should help users quickly understand what changed between versions and assess upgrade impact.

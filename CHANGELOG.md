@@ -1,69 +1,50 @@
 # Changelog
 
-This file documents **breaking changes only** in the go-simple-eventstore library. 
+This file documents all user-relevant changes in the go-simple-eventstore library, including breaking changes, new features, improvements, and bug fixes.
 
-Breaking changes are modifications that require existing users to update their code to continue working with the new version. This includes changes to public APIs, function signatures, default behaviors, and configuration options.
+## [Unreleased]
 
-For a complete list of all changes including new features, bug fixes, and improvements, please refer to the [GitHub Releases](https://github.com/shogotsuneto/go-simple-eventstore/releases) page.
+### ⚠️ Breaking Changes
+- **EventStore.Append signature change**: Now returns `(int64, error)` instead of `error` to provide latest version after append
+- **Empty append behavior**: Empty appends now always return version `0` regardless of current stream state
+
+### ✨ Features
+- **Append operation now returns latest version**: Event producers can know the current version after successful append
+- **In-place event updates**: Original events passed to `Append()` are updated with assigned versions, IDs, and timestamps
 
 ## [v0.0.5] - 2025-08-20
 
-### Breaking Changes
+### ⚠️ Breaking Changes
+- **PostgreSQL `InitSchema` signature change**: Added `useClientTimestamps` parameter
+- **PostgreSQL `Config` struct change**: Added `UseClientGeneratedTimestamps` field
+- **Default timestamp behavior change**: Now uses database-generated timestamps by default
 
-#### PostgreSQL Configuration API Changes
+### ✨ Features
+- **PostgreSQL database-generated timestamps**: New option for improved consistency and reduced clock skew
+- **Configurable timestamp generation**: Choose between database or client-generated timestamps
 
-**Impact:** Existing PostgreSQL users must update their code to continue working.
+## [v0.0.4] - 2025-08-05
 
-##### `InitSchema` Function Signature Change
+### ⚠️ Breaking Changes
+- **EventStore interface field renames**: Updated field names in the EventStore interface
 
-The `InitSchema` function now requires an additional `useClientTimestamps` parameter:
+### ✨ Features
+- **Descending load logic**: Added support for loading events in descending order
 
-```go
-// Before v0.0.5
-InitSchema(db, tableName)
+## [v0.0.3] - 2025-08-04
 
-// v0.0.5 and later
-InitSchema(db, tableName, useClientTimestamps)
-```
+### ⚠️ Breaking Changes
+- **PostgreSQL default table name removed**: No longer provides a default table name
 
-**Migration:** Add the third parameter to control timestamp generation:
-- Use `false` for database-generated timestamps (recommended default)
-- Use `true` for application-generated timestamps (legacy behavior)
+### ✨ Features
+- **Per-table consumer interface**: Added EventConsumer interface and implementations for table-specific event consumption
 
-##### `Config` Struct Field Addition
+## [v0.0.2] - 2025-07-29
 
-The PostgreSQL `Config` struct now includes a new field:
+### ✨ Features
+- **PostgreSQL configurable table names**: Added support for custom table names with explicit configuration API
 
-```go
-type Config struct {
-    ConnectionString string
-    TableName string
-    UseClientGeneratedTimestamps bool  // New field
-}
-```
+## [v0.0.1] - 2025-07-28
 
-**Migration:** Update your config initialization:
-
-```go
-// Before v0.0.5
-config := postgres.Config{
-    ConnectionString: "...",
-    TableName: "events",
-}
-
-// v0.0.5 and later
-config := postgres.Config{
-    ConnectionString: "...",
-    TableName: "events",
-    UseClientGeneratedTimestamps: false, // Use database timestamps (recommended)
-}
-```
-
-##### Default Timestamp Behavior Change
-
-- **Before v0.0.5:** All timestamps were generated in the application layer
-- **v0.0.5 and later:** Default is database-generated timestamps using `DEFAULT CURRENT_TIMESTAMP`
-
-This change improves consistency and reduces clock skew issues in distributed environments.
-
-**Migration:** If you need the old behavior (application-generated timestamps), set `UseClientGeneratedTimestamps: true` in your config.
+### ✨ Features
+- **Initial release**: Basic EventStore interface with in-memory and PostgreSQL implementations
