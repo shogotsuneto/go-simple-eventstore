@@ -83,7 +83,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	for i := range events {
 		version := maxVersion + int64(i) + 1
 		latestVersion = version
-		
+
 		// Update the original event with the assigned version
 		events[i].Version = version
 		if events[i].Timestamp.IsZero() {
@@ -114,7 +114,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return latestVersion, nil
 }
 
