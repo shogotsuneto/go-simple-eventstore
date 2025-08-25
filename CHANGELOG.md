@@ -4,6 +4,10 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes
+- **ExpectedVersion parameter type change**: `EventStore.Append` now uses `int64` instead of `int` for the `expectedVersion` parameter to match Event.Version field type
+- **ErrVersionMismatch.ExpectedVersion field type change**: Changed from `int` to `int64` for consistency
+
 ## [v0.0.6] - 2025-08-23
 
 ### ⚠️ Breaking Changes
