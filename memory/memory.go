@@ -73,7 +73,7 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	for i := range events {
 		newVersion := currentVersion + int64(i) + 1
 		latestVersion = newVersion
-		
+
 		// Update the original event with the assigned version
 		events[i].Version = newVersion
 		if events[i].Timestamp.IsZero() {

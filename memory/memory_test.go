@@ -870,12 +870,12 @@ func TestInMemoryEventStore_AppendReturnsVersion(t *testing.T) {
 		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
 		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
 	}
-	
+
 	latestVersion, err := store.Append("test-stream", events1, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
-	
+
 	if latestVersion != 2 {
 		t.Errorf("Expected latest version 2, got %d", latestVersion)
 	}
@@ -884,12 +884,12 @@ func TestInMemoryEventStore_AppendReturnsVersion(t *testing.T) {
 	events2 := []eventstore.Event{
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
 	}
-	
+
 	latestVersion, err = store.Append("test-stream", events2, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
-	
+
 	if latestVersion != 3 {
 		t.Errorf("Expected latest version 3, got %d", latestVersion)
 	}
@@ -904,23 +904,23 @@ func TestInMemoryEventStore_AppendUpdatesEventVersions(t *testing.T) {
 		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
 		{Type: "Event3", Data: []byte(`{"test": "data3"}`)},
 	}
-	
+
 	// Verify events don't have versions initially
 	for i, event := range events {
 		if event.Version != 0 {
 			t.Errorf("Event %d should have version 0 initially, got %d", i, event.Version)
 		}
 	}
-	
+
 	latestVersion, err := store.Append("test-stream", events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
-	
+
 	if latestVersion != 3 {
 		t.Errorf("Expected latest version 3, got %d", latestVersion)
 	}
-	
+
 	// Verify events now have correct versions
 	expectedVersions := []int64{1, 2, 3}
 	for i, event := range events {
@@ -928,7 +928,7 @@ func TestInMemoryEventStore_AppendUpdatesEventVersions(t *testing.T) {
 			t.Errorf("Event %d should have version %d, got %d", i, expectedVersions[i], event.Version)
 		}
 	}
-	
+
 	// Verify events have IDs assigned if they were empty
 	for i, event := range events {
 		expectedID := fmt.Sprintf("test-stream-%d", expectedVersions[i])
@@ -947,7 +947,7 @@ func TestInMemoryEventStore_AppendEmptyReturnsZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
-	
+
 	if latestVersion != 0 {
 		t.Errorf("Expected latest version 0 for empty append on empty stream, got %d", latestVersion)
 	}
@@ -957,7 +957,7 @@ func TestInMemoryEventStore_AppendEmptyReturnsZero(t *testing.T) {
 		{Type: "Event1", Data: []byte(`{"test": "data1"}`)},
 		{Type: "Event2", Data: []byte(`{"test": "data2"}`)},
 	}
-	
+
 	_, err = store.Append("test-stream", events, -1)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
@@ -968,7 +968,7 @@ func TestInMemoryEventStore_AppendEmptyReturnsZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
-	
+
 	if latestVersion != 0 {
 		t.Errorf("Expected latest version 0 for empty append on non-empty stream, got %d", latestVersion)
 	}
