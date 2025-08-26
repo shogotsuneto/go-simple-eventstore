@@ -56,7 +56,7 @@ The `Append` method has the following behavior:
 - **Empty appends**: Always returns `0`, regardless of the current stream state
   - Empty append on empty stream: returns `0`
   - Empty append on non-empty stream: returns `0` (not the current version)
-- **Event updates**: Events passed to `Append` are updated in-place with their assigned versions, IDs, and timestamps
+- **Event updates**: Events passed to `Append` are updated in-place with their assigned versions. ID and timestamp assignment depends on the implementation
 - **Optimistic concurrency**: Uses `expectedVersion` parameter for conflict detection
 
 ### Example
@@ -71,6 +71,7 @@ events := []eventstore.Event{
 latestVersion, err := store.Append("user-123", events, -1)
 // latestVersion will be 2 (version of the last event)
 // events[0].Version will be 1, events[1].Version will be 2
+// ID and timestamp assignment depends on the specific implementation
 
 // Empty append always returns 0
 version, err := store.Append("user-123", []eventstore.Event{}, -1)
