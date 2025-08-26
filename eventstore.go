@@ -45,7 +45,7 @@ type EventStore interface {
 	// - If expectedVersion is 0, the stream must not exist (stream creation)
 	// - If expectedVersion > 0, the stream must be at exactly that version
 	// Returns the latest version number after successful append and updates each event with its assigned version.
-	Append(streamID string, events []Event, expectedVersion int) (int64, error)
+	Append(streamID string, events []Event, expectedVersion int64) (int64, error)
 
 	// Load retrieves events for the given stream using the specified options.
 	Load(streamID string, opts LoadOptions) ([]Event, error)
@@ -56,7 +56,7 @@ type EventStore interface {
 // ErrVersionMismatch indicates that the expected version does not match the actual stream version.
 type ErrVersionMismatch struct {
 	StreamID        string
-	ExpectedVersion int
+	ExpectedVersion int64
 	ActualVersion   int64
 }
 

@@ -30,7 +30,7 @@ func NewPostgresEventStore(config Config) (*PostgresEventStore, error) {
 }
 
 // Append adds new events to the given stream.
-func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int) (int64, error) {
+func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, expectedVersion int64) (int64, error) {
 	if len(events) == 0 {
 		return 0, nil
 	}
@@ -62,7 +62,7 @@ func (s *PostgresEventStore) Append(streamID string, events []eventstore.Event, 
 				ActualVersion: maxVersion,
 			}
 		}
-		if expectedVersion > 0 && maxVersion != int64(expectedVersion) {
+		if expectedVersion > 0 && maxVersion != expectedVersion {
 			return 0, &eventstore.ErrVersionMismatch{
 				StreamID:        streamID,
 				ExpectedVersion: expectedVersion,
