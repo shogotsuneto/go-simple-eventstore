@@ -4,6 +4,17 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes
+- **EventConsumer interface replaced with cursor-based Consumer**: Removed `EventConsumer`, `ConsumeOptions`, and `EventSubscription` interfaces in favor of new cursor-based `Consumer` interface
+- **New cursor-based consumption model**: `Fetch(ctx, cursor, limit)` and `Commit(ctx, cursor)` methods replace timestamp-based `Retrieve()` and `Subscribe()` methods  
+- **Envelope replaces Event in consumption**: Consumer methods now return `Envelope` type with portable event wrapper instead of `Event`
+- **PostgresEventConsumer constructor change**: `NewPostgresEventConsumer` no longer takes `pollingInterval` parameter
+
+### ✨ Features
+- **Cursor-based event consumption**: New `Consumer` interface with `Fetch()` and `Commit()` methods for precise event positioning and better delivery guarantees
+- **Envelope event wrapper**: Portable event format with `StreamID`, `CommitTime`, `EventID`, `Partition`, and `Offset` fields for cross-platform consumption
+- **Improved delivery reliability**: Cursor-based positioning eliminates timestamp precision issues and duplicate delivery problems
+
 ## [v0.0.7] - 2025-08-26
 
 ### ⚠️ Breaking Changes
