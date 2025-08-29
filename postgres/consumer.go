@@ -40,29 +40,20 @@ func NewPostgresEventConsumer(config Config) (*PostgresEventConsumer, error) {
 	}, nil
 }
 
-// cursorToTimestamp converts a cursor to a timestamp and event ID.
-// Cursor format: 8 bytes timestamp (unix nano) + variable length event ID
-func (s *PostgresEventConsumer) cursorToTimestamp(cursor eventstore.Cursor) (time.Time, string) {
+// cursorToID converts a cursor to an ID.
+// Cursor format: 8 bytes containing the database row ID
+func (s *PostgresEventConsumer) cursorToID(cursor eventstore.Cursor) int64 {
 	if len(cursor) < 8 {
-		return time.Time{}, "" // Start from beginning
+		return 0 // Start from beginning
 	}
 	
-	timestampNano := int64(binary.LittleEndian.Uint64(cursor[:8]))
-	timestamp := time.Unix(0, timestampNano)
-	
-	var eventID string
-	if len(cursor) > 8 {
-		eventID = string(cursor[8:])
-	}
-	
-	return timestamp, eventID
+	return int64(binary.LittleEndian.Uint64(cursor[:8]))
 }
 
-// timestampToCursor converts a timestamp and event ID to a cursor.
-func (s *PostgresEventConsumer) timestampToCursor(timestamp time.Time, eventID string) eventstore.Cursor {
-	cursor := make([]byte, 8+len(eventID))
-	binary.LittleEndian.PutUint64(cursor[:8], uint64(timestamp.UnixNano()))
-	copy(cursor[8:], []byte(eventID))
+// idToCursor converts an ID to a cursor.
+func (s *PostgresEventConsumer) idToCursor(id int64) eventstore.Cursor {
+	cursor := make([]byte, 8)
+	binary.LittleEndian.PutUint64(cursor, uint64(id))
 	return cursor
 }
 
@@ -97,34 +88,34 @@ func (s *PostgresEventConsumer) eventToEnvelope(event eventstore.Event, streamID
 // Fetch up to 'limit' events strictly after 'cursor'.
 // Returns the batch and the *advanced* cursor (position after the last delivered event).
 func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cursor, limit int) (batch []eventstore.Envelope, next eventstore.Cursor, err error) {
-	cursorTimestamp, cursorEventID := s.cursorToTimestamp(cursor)
+	cursorID := s.cursorToID(cursor)
 	
 	query := fmt.Sprintf(`
-		SELECT stream_id, event_id, event_type, event_data, metadata, timestamp, version
+		SELECT id, stream_id, event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s
-		WHERE (timestamp > $1) OR (timestamp = $1 AND event_id > $2)
-		ORDER BY timestamp ASC, event_id ASC
-		LIMIT $3
+		WHERE id > $1
+		ORDER BY id ASC
+		LIMIT $2
 	`, s.tableName)
 
-	rows, err := s.db.QueryContext(ctx, query, cursorTimestamp, cursorEventID, limit)
+	rows, err := s.db.QueryContext(ctx, query, cursorID, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to query events: %w", err)
 	}
 	defer rows.Close()
 
 	var result []eventstore.Envelope
-	var lastTimestamp time.Time
-	var lastEventID string
+	var lastID int64
 
 	for rows.Next() {
+		var id int64
 		var streamID, eventID, eventType string
 		var eventData []byte
 		var metadataJSON *string
 		var timestamp time.Time
 		var version int64
 
-		err := rows.Scan(&streamID, &eventID, &eventType, &eventData, &metadataJSON, &timestamp, &version)
+		err := rows.Scan(&id, &streamID, &eventID, &eventType, &eventData, &metadataJSON, &timestamp, &version)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to scan event row: %w", err)
 		}
@@ -150,8 +141,7 @@ func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cur
 		envelope := s.eventToEnvelope(event, streamID)
 		result = append(result, envelope)
 		
-		lastTimestamp = timestamp
-		lastEventID = eventID
+		lastID = id
 	}
 
 	if err = rows.Err(); err != nil {
@@ -161,7 +151,7 @@ func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cur
 	// Generate next cursor from last event processed
 	var nextCursor eventstore.Cursor
 	if len(result) > 0 {
-		nextCursor = s.timestampToCursor(lastTimestamp, lastEventID)
+		nextCursor = s.idToCursor(lastID)
 	} else {
 		// No events found, return the original cursor
 		nextCursor = cursor
