@@ -4,6 +4,8 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 
 ## [Unreleased]
 
+## [v0.0.8] - 2025-08-29
+
 ### ⚠️ Breaking Changes
 - **EventConsumer interface replaced with cursor-based Consumer**: Removed `EventConsumer`, `ConsumeOptions`, and `EventSubscription` interfaces in favor of new cursor-based `Consumer` interface
 - **New cursor-based consumption model**: `Fetch(ctx, cursor, limit)` and `Commit(ctx, cursor)` methods replace timestamp-based `Retrieve()` and `Subscribe()` methods  
