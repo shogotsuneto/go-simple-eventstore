@@ -1,6 +1,8 @@
 package memory
 
 import (
+	"context"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
@@ -10,29 +12,24 @@ import (
 
 // Compile-time interface compliance checks
 var _ eventstore.EventStore = (*InMemoryEventStore)(nil)
-var _ eventstore.EventConsumer = (*InMemoryEventStore)(nil)
+var _ eventstore.Consumer = (*InMemoryEventStore)(nil)
 
-// InMemoryEventStore is a simple in-memory implementation of both EventStore and EventConsumer.
+// InMemoryEventStore is a simple in-memory implementation of both EventStore and Consumer.
 // This implementation is suitable for testing and demonstration purposes.
 //
-// Note on delivery guarantees: When using timestamp-based filtering, this implementation
-// does not guarantee exactly-once delivery. Events with identical timestamps may be
-// delivered multiple times to subscriptions. This is acceptable as the implementation
-// relies on timestamp precision for event ordering and filtering.
+// For cursor implementation, this uses the index in the timeline array as the cursor position.
+// The cursor is encoded as a little-endian int64 in bytes.
 type InMemoryEventStore struct {
-	mu            sync.RWMutex
-	streams       map[string][]eventstore.Event
-	timeline      []eventstore.Event      // For cross-stream retrieval
-	subscriptions []*InMemorySubscription // Global list of active subscriptions
-	subsMu        sync.RWMutex
+	mu       sync.RWMutex
+	streams  map[string][]eventstore.Event
+	timeline []eventstore.Event // For cross-stream retrieval, ordered by insertion
 }
 
 // NewInMemoryEventStore creates a new in-memory event store with both producer and consumer capabilities.
 func NewInMemoryEventStore() *InMemoryEventStore {
 	return &InMemoryEventStore{
-		streams:       make(map[string][]eventstore.Event),
-		timeline:      make([]eventstore.Event, 0),
-		subscriptions: make([]*InMemorySubscription, 0),
+		streams:  make(map[string][]eventstore.Event),
+		timeline: make([]eventstore.Event, 0),
 	}
 }
 
@@ -110,82 +107,117 @@ func (s *InMemoryEventStore) Append(streamID string, events []eventstore.Event, 
 	// Add events to timeline for cross-stream retrieval
 	s.addEventsToTimeline(eventsToStore)
 
-	// Notify subscriptions about new events
-	s.notifySubscriptions(eventsToStore)
-
 	return latestVersion, nil
 }
 
-// addEventsToTimeline adds events to the central timeline maintaining chronological order.
+// addEventsToTimeline adds events to the central timeline in insertion order.
 // This method must be called while holding the main mutex.
 func (s *InMemoryEventStore) addEventsToTimeline(events []eventstore.Event) {
+	// Simply append to timeline, maintaining insertion order which approximates chronological order
 	for _, event := range events {
-		s.insertEventInTimeline(event)
+		s.timeline = append(s.timeline, event)
 	}
 }
 
-// notifySubscriptions notifies all subscriptions about new events.
-func (s *InMemoryEventStore) notifySubscriptions(events []eventstore.Event) {
-	s.subsMu.RLock()
-	subs := make([]*InMemorySubscription, len(s.subscriptions))
-	copy(subs, s.subscriptions)
-	s.subsMu.RUnlock()
+// cursorToIndex converts a cursor to an index in the timeline.
+// If cursor is nil/empty, returns -1 (meaning start from beginning).
+func (s *InMemoryEventStore) cursorToIndex(cursor eventstore.Cursor) int64 {
+	if len(cursor) == 0 {
+		return -1 // Start from beginning
+	}
+	if len(cursor) != 8 {
+		return -1 // Invalid cursor, start from beginning
+	}
+	return int64(binary.LittleEndian.Uint64(cursor))
+}
 
-	for _, sub := range subs {
-		for _, event := range events {
-			sub.mu.Lock()
-			currentFromTimestamp := sub.fromTimestamp
-			sub.mu.Unlock()
+// indexToCursor converts an index to a cursor.
+func (s *InMemoryEventStore) indexToCursor(index int64) eventstore.Cursor {
+	cursor := make([]byte, 8)
+	binary.LittleEndian.PutUint64(cursor, uint64(index))
+	return cursor
+}
 
-			// Filter by timestamp - allow events with same timestamp or after
-			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
-				select {
-				case sub.eventsCh <- event:
-					sub.mu.Lock()
-					sub.fromTimestamp = event.Timestamp
-					sub.mu.Unlock()
-				case <-sub.closeCh:
-					// Subscription is closed, skip
-					continue
-				default:
-					// Channel is full, skip (could also send error)
-					continue
-				}
+// eventToEnvelope converts an Event to an Envelope.
+func (s *InMemoryEventStore) eventToEnvelope(event eventstore.Event, streamID string) eventstore.Envelope {
+	// Encode metadata as JSON bytes if present
+	var metadataBytes []byte
+	if event.Metadata != nil {
+		// Simple encoding: concatenate key=value pairs with newlines
+		metadataStr := ""
+		for k, v := range event.Metadata {
+			if metadataStr != "" {
+				metadataStr += "\n"
 			}
+			metadataStr += k + "=" + v
 		}
+		metadataBytes = []byte(metadataStr)
+	}
+
+	return eventstore.Envelope{
+		Type:       event.Type,
+		Data:       event.Data,
+		Metadata:   metadataBytes,
+		StreamID:   streamID,
+		CommitTime: event.Timestamp,
+		EventID:    event.ID,
+		Partition:  "global",
+		Offset:     fmt.Sprintf("%d", event.Version),
 	}
 }
 
-// notifySubscriptionsForExisting sends existing events to specific subscriptions
-func (s *InMemoryEventStore) notifySubscriptionsForExisting(subs []*InMemorySubscription, events []eventstore.Event) {
-	for _, sub := range subs {
-		count := 0
-		for _, event := range events {
-			sub.mu.Lock()
-			currentFromTimestamp := sub.fromTimestamp
-			sub.mu.Unlock()
+// Fetch up to 'limit' events strictly after 'cursor'.
+// Returns the batch and the *advanced* cursor (position after the last delivered event).
+func (s *InMemoryEventStore) Fetch(ctx context.Context, cursor eventstore.Cursor, limit int) (batch []eventstore.Envelope, next eventstore.Cursor, err error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-			// Filter by timestamp - allow events with same timestamp or after
-			if currentFromTimestamp.IsZero() || event.Timestamp.After(currentFromTimestamp) || event.Timestamp.Equal(currentFromTimestamp) {
-				select {
-				case sub.eventsCh <- event:
-					sub.mu.Lock()
-					sub.fromTimestamp = event.Timestamp
-					sub.mu.Unlock()
-					count++
-					if sub.batchSize > 0 && count >= sub.batchSize {
-						break // Limit batch if specified
-					}
-				case <-sub.closeCh:
-					// Subscription is closed, skip
-					return
-				default:
-					// Channel is full, skip (could also send error)
-					return
+	// Convert cursor to index
+	startIndex := s.cursorToIndex(cursor)
+	
+	// Start from the position after the cursor
+	startIndex++
+	
+	if startIndex < 0 {
+		startIndex = 0
+	}
+
+	var result []eventstore.Envelope
+	lastIndex := startIndex - 1 // Track the last processed index
+
+	// Find events in timeline starting from cursor position
+	for i := int(startIndex); i < len(s.timeline) && len(result) < limit; i++ {
+		event := s.timeline[i]
+		
+		// Find which stream this event belongs to
+		var streamID string
+		for sid, events := range s.streams {
+			for _, streamEvent := range events {
+				if streamEvent.ID == event.ID && streamEvent.Version == event.Version {
+					streamID = sid
+					break
 				}
 			}
+			if streamID != "" {
+				break
+			}
 		}
+		
+		envelope := s.eventToEnvelope(event, streamID)
+		result = append(result, envelope)
+		lastIndex = int64(i)
 	}
+
+	// Return the cursor pointing to the last event processed
+	nextCursor := s.indexToCursor(lastIndex)
+	return result, nextCursor, nil
+}
+
+// Commit is called AFTER the projector has durably saved its own checkpoint.
+// For in-memory implementation, this is a no-op.
+func (s *InMemoryEventStore) Commit(ctx context.Context, cursor eventstore.Cursor) error {
+	// No-op for in-memory implementation
+	return nil
 }
 
 // Load retrieves events for the given stream using the specified options.
@@ -227,127 +259,4 @@ func (s *InMemoryEventStore) Load(streamID string, opts eventstore.LoadOptions) 
 	}
 
 	return result, nil
-}
-
-// Retrieve retrieves events from all streams in a retrieval operation.
-func (s *InMemoryEventStore) Retrieve(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var result []eventstore.Event
-
-	// Filter events from timeline by timestamp
-	for _, event := range s.timeline {
-		if opts.FromTimestamp.IsZero() || event.Timestamp.After(opts.FromTimestamp) || event.Timestamp.Equal(opts.FromTimestamp) {
-			result = append(result, event)
-		}
-	}
-
-	// Apply batch size limit
-	if opts.BatchSize > 0 && len(result) > opts.BatchSize {
-		result = result[:opts.BatchSize]
-	}
-
-	return result, nil
-}
-
-// Subscribe creates a subscription to all streams for continuous event consumption.
-func (s *InMemoryEventStore) Subscribe(opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
-	s.subsMu.Lock()
-	defer s.subsMu.Unlock()
-
-	sub := &InMemorySubscription{
-		fromTimestamp: opts.FromTimestamp,
-		batchSize:     opts.BatchSize,
-		eventsCh:      make(chan eventstore.Event, 100), // Buffered channel
-		errorsCh:      make(chan error, 10),
-		closeCh:       make(chan struct{}),
-		store:         s,
-	}
-
-	// Add subscription to global list
-	s.subscriptions = append(s.subscriptions, sub)
-
-	// Immediately notify about existing events in timeline
-	s.mu.RLock()
-	existingEvents := make([]eventstore.Event, len(s.timeline))
-	copy(existingEvents, s.timeline)
-	s.mu.RUnlock()
-
-	// Send existing events through notification system
-	if len(existingEvents) > 0 {
-		go s.notifySubscriptionsForExisting([]*InMemorySubscription{sub}, existingEvents)
-	}
-
-	return sub, nil
-}
-
-// insertEventInTimeline inserts an event into the timeline maintaining chronological order.
-// This method must be called while holding the main mutex.
-func (s *InMemoryEventStore) insertEventInTimeline(event eventstore.Event) {
-	// For simplicity, we'll append and then sort if needed
-	// In a real implementation, you might use a more efficient insertion
-	s.timeline = append(s.timeline, event)
-
-	// Simple insertion sort to maintain chronological order
-	for i := len(s.timeline) - 1; i > 0; i-- {
-		if s.timeline[i].Timestamp.Before(s.timeline[i-1].Timestamp) {
-			s.timeline[i], s.timeline[i-1] = s.timeline[i-1], s.timeline[i]
-		} else {
-			break
-		}
-	}
-}
-
-// removeSubscription removes a subscription from the store.
-func (s *InMemoryEventStore) removeSubscription(sub *InMemorySubscription) {
-	s.subsMu.Lock()
-	defer s.subsMu.Unlock()
-
-	// Remove subscription from global list
-	for i, existing := range s.subscriptions {
-		if existing == sub {
-			// Remove subscription from slice
-			s.subscriptions = append(s.subscriptions[:i], s.subscriptions[i+1:]...)
-			break
-		}
-	}
-}
-
-// InMemorySubscription represents an active subscription to all streams in memory.
-type InMemorySubscription struct {
-	fromTimestamp time.Time
-	batchSize     int
-	eventsCh      chan eventstore.Event
-	errorsCh      chan error
-	closeCh       chan struct{}
-	store         *InMemoryEventStore
-	closed        bool
-	mu            sync.Mutex
-}
-
-// Events returns a channel that receives events as they are appended to the stream.
-func (s *InMemorySubscription) Events() <-chan eventstore.Event {
-	return s.eventsCh
-}
-
-// Errors returns a channel that receives any errors during subscription.
-func (s *InMemorySubscription) Errors() <-chan error {
-	return s.errorsCh
-}
-
-// Close stops the subscription and releases resources.
-func (s *InMemorySubscription) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.closed {
-		return nil
-	}
-
-	s.closed = true
-	close(s.closeCh)
-	s.store.removeSubscription(s)
-
-	return nil
 }

@@ -1,13 +1,13 @@
-# Consumer Example
+# Cursor-based Consumer Example
 
-This example demonstrates event consumption from all streams in a table using both retrieve and subscription approaches.
+This example demonstrates cursor-based event consumption from all streams in a table using the new Consumer interface.
 
 ## Features
 
-- **Retrieve** - Batch retrieval of events from all streams
-- **Subscribe** - Real-time event consumption from all streams  
-- **Timestamp-based filtering** - Consume events from specific timestamps
-- **Table-wide consumption** - Process events across multiple streams
+- **Cursor-based fetching** - Precise event positioning with cursors for reliable consumption
+- **Incremental processing** - Fetch events incrementally using cursor advancement
+- **Cross-stream consumption** - Process events across multiple streams in chronological order
+- **Envelope format** - Portable event wrapper with StreamID, CommitTime, EventID, Partition, and Offset
 
 ## Running the example
 
@@ -22,32 +22,51 @@ go run main.go
 
 ## Key interfaces
 
-### EventConsumer
+### Consumer
 ```go
-type EventConsumer interface {
-    // Retrieve events from all streams in the table
-    Retrieve(opts ConsumeOptions) ([]Event, error)
-    // Subscribe to all streams in the table  
-    Subscribe(opts ConsumeOptions) (EventSubscription, error)
+type Consumer interface {
+    // Fetch up to 'limit' events strictly after 'cursor'.
+    // Returns the batch and the *advanced* cursor (position after the last delivered event).
+    Fetch(ctx context.Context, cursor Cursor, limit int) (batch []Envelope, next Cursor, err error)
+
+    // Called AFTER the projector has durably saved its own checkpoint.
+    // Adapters that need it (such as Kafka groups) should commit; others can no-op.
+    Commit(ctx context.Context, cursor Cursor) error
 }
 ```
 
-### ConsumeOptions
+### Envelope
 ```go
-type ConsumeOptions struct {
-    FromTimestamp time.Time  // Start consuming from this timestamp
-    BatchSize     int        // Maximum events per batch
+type Envelope struct {
+    Type       string        // domain event type
+    Data       []byte        // payload
+    Metadata   []byte        // optional
+
+    StreamID   string        // e.g., "card<id>"
+    CommitTime time.Time     // db/stream commit/arrival time
+    EventID    string        // ULID/KSUID/hash for idempotency (optional)
+
+    // Diagnostics (useful for logs/metrics)
+    Partition  string        // "global" | "topic:3" | "shard-000..."
+    Offset     string        // "12345" | Kinesis seq | Kafka offset
 }
+```
+
+### Cursor
+```go
+type Cursor []byte  // Opaque checkpoint token (adapter-defined)
 ```
 
 ## Usage patterns
 
-**Retrieve for batch processing:**
-- Process historical events in batches
-- Build read models from event history
-- Periodic data synchronization
+**Cursor-based batch processing:**
+- Start with `nil` cursor to fetch from beginning
+- Use returned cursor to fetch next batch incrementally  
+- Call `Commit()` after processing each batch to checkpoint progress
+- Resume from saved cursor after restarts
 
-**Subscribe for real-time processing:**
-- Live projections and dashboards
-- Event-driven workflows
-- Real-time notifications
+**Benefits over timestamp-based consumption:**
+- Precise event positioning eliminates duplicate delivery
+- Cursor advancement ensures exactly-once processing semantics
+- Cross-adapter portability with opaque cursor format
+- Better performance with adapter-optimized cursor implementations
