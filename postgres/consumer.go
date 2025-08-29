@@ -46,7 +46,7 @@ func (s *PostgresEventConsumer) cursorToID(cursor eventstore.Cursor) int64 {
 	if len(cursor) < 8 {
 		return 0 // Start from beginning
 	}
-	
+
 	return int64(binary.LittleEndian.Uint64(cursor[:8]))
 }
 
@@ -89,7 +89,7 @@ func (s *PostgresEventConsumer) eventToEnvelope(event eventstore.Event, streamID
 // Returns the batch and the *advanced* cursor (position after the last delivered event).
 func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cursor, limit int) (batch []eventstore.Envelope, next eventstore.Cursor, err error) {
 	cursorID := s.cursorToID(cursor)
-	
+
 	query := fmt.Sprintf(`
 		SELECT id, stream_id, event_id, event_type, event_data, metadata, timestamp, version
 		FROM %s
@@ -140,7 +140,7 @@ func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cur
 
 		envelope := s.eventToEnvelope(event, streamID)
 		result = append(result, envelope)
-		
+
 		lastID = id
 	}
 

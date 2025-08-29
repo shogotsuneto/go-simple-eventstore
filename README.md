@@ -25,27 +25,37 @@ type EventStore interface {
     // - If expectedVersion is -1, the stream can be in any state (no concurrency check)
     // - If expectedVersion is 0, the stream must not exist (stream creation)  
     // - If expectedVersion > 0, the stream must be at exactly that version
-    Append(streamID string, events []Event, expectedVersion int) (int64, error)
+    Append(streamID string, events []Event, expectedVersion int64) (int64, error)
 
     // Load retrieves events for the given stream using the specified options.
     Load(streamID string, opts LoadOptions) ([]Event, error)
 }
 
-type EventConsumer interface {
-    // Retrieve retrieves events from all streams in a table
-    Retrieve(opts ConsumeOptions) ([]Event, error)
-    // Subscribe creates a subscription to all streams in a table
-    Subscribe(opts ConsumeOptions) (EventSubscription, error)
+type Consumer interface {
+    // Fetch up to 'limit' events strictly after 'cursor'.
+    // Returns the batch and the *advanced* cursor (position after the last delivered event).
+    Fetch(ctx context.Context, cursor Cursor, limit int) (batch []Envelope, next Cursor, err error)
+
+    // Called AFTER the projector has durably saved its own checkpoint.
+    // Adapters that need it (such as Kafka groups) should commit; others can no-op.
+    Commit(ctx context.Context, cursor Cursor) error
 }
 
-type EventSubscription interface {
-    // Events returns a channel that receives events as they are appended to the stream
-    Events() <-chan Event
-    // Errors returns a channel that receives any errors during subscription
-    Errors() <-chan error
-    // Close stops the subscription and releases resources
-    Close() error
+type Envelope struct {
+    Type     string    // domain event type
+    Data     []byte    // payload
+    Metadata []byte    // optional
+
+    StreamID   string    // e.g., "card<id>"
+    CommitTime time.Time // db/stream commit/arrival time
+    EventID    string    // ULID/KSUID/hash for idempotency (optional)
+
+    // Diagnostics (useful for logs/metrics)
+    Partition string // "global" | "topic:3" | "shard-000..."
+    Offset    string // "12345" | Kinesis seq | Kafka offset
 }
+
+type Cursor []byte  // Opaque checkpoint token (adapter-defined)
 ```
 
 ## 📝 Append Behavior
@@ -103,23 +113,14 @@ type LoadOptions struct {
 }
 ```
 
-### ConsumeOptions
+### Cursor-based Consumption
 
-Used when consuming events from all streams in a table via `EventConsumer.Retrieve()` and `EventConsumer.Subscribe()`:
+Event consumption uses cursor-based positioning for precise event delivery:
 
-```go
-type ConsumeOptions struct {
-    // FromTimestamp specifies where to start consuming events from
-    // - Events with timestamps equal to or after this time will be included
-    // - Use time.Time{} to start from the earliest available events
-    FromTimestamp time.Time
-    
-    // BatchSize specifies the maximum number of events to return in each batch
-    // - For Retrieve(): maximum events returned per call
-    // - For Subscribe(): maximum events delivered per notification
-    BatchSize int
-}
-```
+- **Cursor**: Opaque checkpoint token that represents a position in the event stream
+- **Fetch**: Retrieves events after a specific cursor position with a limit
+- **Commit**: Acknowledges successful processing of events up to a cursor
+- **Benefits**: Eliminates timestamp precision issues and duplicate delivery problems
 
 ## 🔌 Backend Adapters
 
@@ -185,49 +186,79 @@ func main() {
 }
 ```
 
-### Consuming Events with Retrieve
+### Event Consumption with Cursors
 
 ```go
-// Retrieve events from all streams in the table
-events, err := store.Retrieve(eventstore.ConsumeOptions{
-    FromTimestamp: time.Now().Add(-24 * time.Hour), // Last 24 hours
-    BatchSize:     100,
-})
-if err != nil {
-    panic(err)
-}
+package main
 
-for _, event := range events {
-    // Process each event...
-}
-```
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
 
-### Consuming Events with Subscriptions
+    "github.com/shogotsuneto/go-simple-eventstore"
+    "github.com/shogotsuneto/go-simple-eventstore/memory"
+)
 
-```go
-// Subscribe to events from all streams in the table
-subscription, err := store.Subscribe(eventstore.ConsumeOptions{
-    FromTimestamp: time.Now(), // From now onwards
-    BatchSize:     10,
-})
-if err != nil {
-    panic(err)
-}
-defer subscription.Close()
-
-// Handle events as they arrive
-go func() {
-    for {
-        select {
-        case event := <-subscription.Events():
-            // Process event in real-time
-            fmt.Printf("Received: %s\n", event.Type)
-        case err := <-subscription.Errors():
-            // Handle subscription errors
-            fmt.Printf("Error: %v\n", err)
-        }
+func main() {
+    store := memory.NewInMemoryEventStore()
+    ctx := context.Background()
+    
+    // Example 1: Basic cursor-based fetching
+    fmt.Println("=== Basic Cursor Usage ===")
+    
+    // Start from beginning with nil cursor
+    batch, cursor, err := store.Fetch(ctx, nil, 100)
+    if err != nil {
+        panic(err)
     }
-}()
+
+    for _, envelope := range batch {
+        fmt.Printf("Event: %s from stream %s\n", envelope.Type, envelope.StreamID)
+    }
+
+    // Commit cursor after successful processing
+    err = store.Commit(ctx, cursor)
+    if err != nil {
+        panic(err)
+    }
+    
+    // Example 2: Incremental processing with persistence
+    fmt.Println("\n=== Incremental Processing ===")
+    
+    var savedCursor eventstore.Cursor // Load from persistent storage
+    
+    for {
+        // Fetch next batch of events
+        batch, cursor, err := store.Fetch(ctx, savedCursor, 50)
+        if err != nil {
+            log.Printf("Error fetching events: %v", err)
+            continue
+        }
+        
+        if len(batch) == 0 {
+            // No new events, wait before next fetch
+            time.Sleep(1 * time.Second)
+            continue
+        }
+        
+        // Process events
+        for _, envelope := range batch {
+            fmt.Printf("Processing: %s from stream %s\n", envelope.Type, envelope.StreamID)
+        }
+        
+        // Commit progress
+        err = store.Commit(ctx, cursor)
+        if err != nil {
+            log.Printf("Error committing cursor: %v", err)
+            continue
+        }
+        
+        // Save cursor for recovery (persist to database/file)
+        savedCursor = cursor
+    }
+}
 ```
 
 ### Using PostgreSQL Backend
@@ -236,8 +267,8 @@ go func() {
 package main
 
 import (
+    "context"
     "database/sql"
-    "time"
     _ "github.com/lib/pq"
     
     "github.com/shogotsuneto/go-simple-eventstore"
@@ -253,7 +284,7 @@ func main() {
     defer db.Close()
     
     // Initialize schema
-    if err := postgres.InitSchema(db, "events"); err != nil {
+    if err := postgres.InitSchema(db, "events", false); err != nil {
         panic(err)
     }
     
@@ -266,12 +297,19 @@ func main() {
     if err != nil {
         panic(err)
     }
-    consumer, err := postgres.NewPostgresEventConsumer(config, 2*time.Second)
+    consumer, err := postgres.NewPostgresEventConsumer(config)
     if err != nil {
         panic(err)
     }
     
-    // Use the same interface as before...
+    // Use cursor-based consumption
+    ctx := context.Background()
+    batch, cursor, err := consumer.Fetch(ctx, nil, 100)
+    if err != nil {
+        panic(err)
+    }
+    
+    // Process events and commit...
 }
 ```
 
@@ -280,14 +318,14 @@ func main() {
 See the examples directory for complete demonstrations:
 
 - [hello-world example](examples/hello-world/) - Basic event store operations
-- [consumer example](examples/consumer-example/) - Event consumption with polling and subscriptions  
+- [consumer example](examples/consumer-example/) - Cursor-based event consumption from all streams
 - [postgres example](examples/postgres-example/) - PostgreSQL backend usage
 
 ```bash
 # Run the basic hello-world example
 make run-hello-world
 
-# Run the consumer example (polling and subscriptions)
+# Run the consumer example (cursor-based consumption)
 make run-consumer-example
 
 # Run the PostgreSQL example
@@ -302,8 +340,8 @@ This project focuses on the essential functionality needed for event sourcing:
 2. **Stream-based organization** - Events are organized by stream ID
 3. **Cursor-based loading** - Efficient event retrieval with pagination support
 4. **Database agnostic** - Unified interface across different storage backends
-5. **Event consumption** - Support for both polling and subscription-based event consumption
-6. **Real-time projections** - Subscribe to events as they are appended for live updates
+5. **Cursor-based consumption** - Precise event positioning for reliable cross-stream consumption
+6. **Incremental processing** - Fetch and commit events incrementally with cursor checkpoints
 
 ## 🧪 Testing
 

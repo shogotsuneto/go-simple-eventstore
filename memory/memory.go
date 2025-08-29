@@ -174,10 +174,10 @@ func (s *InMemoryEventStore) Fetch(ctx context.Context, cursor eventstore.Cursor
 
 	// Convert cursor to index
 	startIndex := s.cursorToIndex(cursor)
-	
+
 	// Start from the position after the cursor
 	startIndex++
-	
+
 	if startIndex < 0 {
 		startIndex = 0
 	}
@@ -188,7 +188,7 @@ func (s *InMemoryEventStore) Fetch(ctx context.Context, cursor eventstore.Cursor
 	// Find events in timeline starting from cursor position
 	for i := int(startIndex); i < len(s.timeline) && len(result) < limit; i++ {
 		event := s.timeline[i]
-		
+
 		// Find which stream this event belongs to
 		var streamID string
 		for sid, events := range s.streams {
@@ -202,7 +202,7 @@ func (s *InMemoryEventStore) Fetch(ctx context.Context, cursor eventstore.Cursor
 				break
 			}
 		}
-		
+
 		envelope := s.eventToEnvelope(event, streamID)
 		result = append(result, envelope)
 		lastIndex = int64(i)
