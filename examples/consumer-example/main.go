@@ -80,7 +80,7 @@ func main() {
 	fmt.Println("\n📊 Demonstrating Cursor-based Fetching...")
 
 	ctx := context.Background()
-	
+
 	// Fetch from beginning (nil cursor)
 	batch1, cursor1, err := store.Fetch(ctx, nil, 10)
 	if err != nil {
@@ -89,7 +89,7 @@ func main() {
 
 	fmt.Printf("Fetched %d events from beginning:\n", len(batch1))
 	for i, envelope := range batch1 {
-		fmt.Printf("  %d. %s from stream '%s' (EventID: %s, Partition: %s)\n", 
+		fmt.Printf("  %d. %s from stream '%s' (EventID: %s, Partition: %s)\n",
 			i+1, envelope.Type, envelope.StreamID, envelope.EventID, envelope.Partition)
 		fmt.Printf("     Data: %s\n", string(envelope.Data))
 	}
@@ -127,7 +127,7 @@ func main() {
 
 	fmt.Printf("Fetched %d new events from cursor:\n", len(batch2))
 	for i, envelope := range batch2 {
-		fmt.Printf("  %d. %s from stream '%s' (EventID: %s)\n", 
+		fmt.Printf("  %d. %s from stream '%s' (EventID: %s)\n",
 			i+1, envelope.Type, envelope.StreamID, envelope.EventID)
 		fmt.Printf("     Data: %s\n", string(envelope.Data))
 	}
