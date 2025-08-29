@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shogotsuneto/go-simple-eventstore"
+	eventstore "github.com/shogotsuneto/go-simple-eventstore"
 )
 
 // Tests for basic InMemoryEventStore functionality
@@ -403,7 +403,6 @@ func TestInMemoryEventStore_ConcurrencyConflictErrors(t *testing.T) {
 	})
 }
 
-// Tests for InMemoryEventStore consumer functionality
 // Tests for reverse load functionality
 
 func TestInMemoryEventStore_Load_Desc(t *testing.T) {
