@@ -2,208 +2,167 @@ package postgres
 
 import (
 	"context"
-	"sync"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
 
 // Compile-time interface compliance check
-var _ eventstore.EventConsumer = (*PostgresEventConsumer)(nil)
+var _ eventstore.Consumer = (*PostgresEventConsumer)(nil)
 
-// PostgresEventConsumer provides consumer capabilities using PostgreSQL.
+// PostgresEventConsumer provides cursor-based consumer capabilities using PostgreSQL.
 type PostgresEventConsumer struct {
 	*pgClient
-	subscriptions   []*PostgresSubscription // Changed to a single slice since we don't use streamID
-	subsMu          sync.RWMutex
-	pollingInterval time.Duration
 }
 
-// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration and polling interval.
-func NewPostgresEventConsumer(config Config, pollingInterval time.Duration) (*PostgresEventConsumer, error) {
-	if pollingInterval <= 0 {
-		pollingInterval = 1 * time.Second
+// parseMetadataJSON parses metadata from JSON string to map[string]string.
+func parseMetadataJSON(metadataJSON string) (map[string]string, error) {
+	var metadata map[string]string
+	err := json.Unmarshal([]byte(metadataJSON), &metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal metadata JSON: %w", err)
 	}
+	return metadata, nil
+}
 
+// NewPostgresEventConsumer creates a new PostgreSQL event consumer with the given configuration.
+func NewPostgresEventConsumer(config Config) (*PostgresEventConsumer, error) {
 	client, err := newPgClient(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PostgresEventConsumer{
-		pgClient:        client,
-		subscriptions:   []*PostgresSubscription{},
-		pollingInterval: pollingInterval,
+		pgClient: client,
 	}, nil
 }
 
-// Retrieve retrieves events from all streams in a retrieval operation.
-func (s *PostgresEventConsumer) Retrieve(opts eventstore.ConsumeOptions) ([]eventstore.Event, error) {
-	return s.loadEventsByTimestamp(opts)
-}
-
-// Subscribe creates a subscription to all streams for continuous event consumption.
-func (s *PostgresEventConsumer) Subscribe(opts eventstore.ConsumeOptions) (eventstore.EventSubscription, error) {
-	s.subsMu.Lock()
-	defer s.subsMu.Unlock()
-
-	sub := &PostgresSubscription{
-		fromTimestamp:     opts.FromTimestamp,
-		processedEventIDs: make(map[string]struct{}),
-		batchSize:         opts.BatchSize,
-		pollingInterval:   s.pollingInterval,
-		eventsCh:          make(chan eventstore.Event, 100), // Buffered channel
-		errorsCh:          make(chan error, 10),
-		closeCh:           make(chan struct{}),
-		store:             s,
-		ctx:               context.Background(),
+// cursorToID converts a cursor to an ID.
+// Cursor format: 8 bytes containing the database row ID
+func (s *PostgresEventConsumer) cursorToID(cursor eventstore.Cursor) int64 {
+	if len(cursor) < 8 {
+		return 0 // Start from beginning
 	}
-
-	// Add subscription to the list
-	s.subscriptions = append(s.subscriptions, sub)
-
-	// Start subscription goroutine
-	go sub.start()
-
-	return sub, nil
+	
+	return int64(binary.LittleEndian.Uint64(cursor[:8]))
 }
 
-// removeSubscription removes a subscription from the store.
-func (s *PostgresEventConsumer) removeSubscription(sub *PostgresSubscription) {
-	s.subsMu.Lock()
-	defer s.subsMu.Unlock()
+// idToCursor converts an ID to a cursor.
+func (s *PostgresEventConsumer) idToCursor(id int64) eventstore.Cursor {
+	cursor := make([]byte, 8)
+	binary.LittleEndian.PutUint64(cursor, uint64(id))
+	return cursor
+}
 
-	for i, existing := range s.subscriptions {
-		if existing == sub {
-			// Remove subscription from slice
-			s.subscriptions = append(s.subscriptions[:i], s.subscriptions[i+1:]...)
-			break
+// eventToEnvelope converts an Event to an Envelope.
+func (s *PostgresEventConsumer) eventToEnvelope(event eventstore.Event, streamID string) eventstore.Envelope {
+	// Encode metadata as JSON bytes if present
+	var metadataBytes []byte
+	if event.Metadata != nil {
+		// Simple encoding: concatenate key=value pairs with newlines
+		metadataStr := ""
+		for k, v := range event.Metadata {
+			if metadataStr != "" {
+				metadataStr += "\n"
+			}
+			metadataStr += k + "=" + v
 		}
+		metadataBytes = []byte(metadataStr)
+	}
+
+	return eventstore.Envelope{
+		Type:       event.Type,
+		Data:       event.Data,
+		Metadata:   metadataBytes,
+		StreamID:   streamID,
+		CommitTime: event.Timestamp,
+		EventID:    event.ID,
+		Partition:  s.tableName, // Use table name as partition
+		Offset:     fmt.Sprintf("%d", event.Version),
 	}
 }
 
-// PostgresSubscription represents an active subscription to all streams in PostgreSQL.
-type PostgresSubscription struct {
-	fromTimestamp     time.Time
-	processedEventIDs map[string]struct{} // Track Event.IDs processed within current timestamp
-	batchSize         int
-	pollingInterval   time.Duration
-	eventsCh          chan eventstore.Event
-	errorsCh          chan error
-	closeCh           chan struct{}
-	store             *PostgresEventConsumer
-	ctx               context.Context
-	cancel            context.CancelFunc
-	closed            bool
-	mu                sync.Mutex
-}
+// Fetch up to 'limit' events strictly after 'cursor'.
+// Returns the batch and the *advanced* cursor (position after the last delivered event).
+func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cursor, limit int) (batch []eventstore.Envelope, next eventstore.Cursor, err error) {
+	cursorID := s.cursorToID(cursor)
+	
+	query := fmt.Sprintf(`
+		SELECT id, stream_id, event_id, event_type, event_data, metadata, timestamp, version
+		FROM %s
+		WHERE id > $1
+		ORDER BY id ASC
+		LIMIT $2
+	`, s.tableName)
 
-// Events returns a channel that receives events as they are appended to the stream.
-func (s *PostgresSubscription) Events() <-chan eventstore.Event {
-	return s.eventsCh
-}
-
-// Errors returns a channel that receives any errors during subscription.
-func (s *PostgresSubscription) Errors() <-chan error {
-	return s.errorsCh
-}
-
-// Close stops the subscription and releases resources.
-func (s *PostgresSubscription) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.closed {
-		return nil
-	}
-
-	s.closed = true
-	if s.cancel != nil {
-		s.cancel()
-	}
-	close(s.closeCh)
-	s.store.removeSubscription(s)
-
-	return nil
-}
-
-// start begins the subscription lifecycle with polling.
-func (s *PostgresSubscription) start() {
-	s.mu.Lock()
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	s.mu.Unlock()
-
-	// Start polling immediately - first poll will load any existing events
-	ticker := time.NewTicker(s.pollingInterval)
-	defer ticker.Stop()
-
-	// Poll immediately, then continue on ticker
-	s.pollForEvents()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-s.closeCh:
-			return
-		case <-ticker.C:
-			s.pollForEvents()
-		}
-	}
-}
-
-// pollForEvents polls the database for new events using timestamp-based filtering.
-func (s *PostgresSubscription) pollForEvents() {
-	// Safety check - don't try to poll if store or db is nil
-	if s.store == nil || s.store.pgClient == nil || s.store.db == nil {
-		return
-	}
-
-	s.mu.Lock()
-	batchSize := s.batchSize
-	if batchSize == 0 {
-		batchSize = 100 // Default batch size
-	}
-
-	// Use timestamp-based filtering for polling (including equal timestamps for duplicates)
-	events, err := s.store.loadEventsByTimestamp(eventstore.ConsumeOptions{
-		FromTimestamp: s.fromTimestamp,
-		BatchSize:     batchSize,
-	})
-	s.mu.Unlock()
-
+	rows, err := s.db.QueryContext(ctx, query, cursorID, limit)
 	if err != nil {
-		select {
-		case s.errorsCh <- err:
-		case <-s.closeCh:
+		return nil, nil, fmt.Errorf("failed to query events: %w", err)
+	}
+	defer rows.Close()
+
+	var result []eventstore.Envelope
+	var lastID int64
+
+	for rows.Next() {
+		var id int64
+		var streamID, eventID, eventType string
+		var eventData []byte
+		var metadataJSON *string
+		var timestamp time.Time
+		var version int64
+
+		err := rows.Scan(&id, &streamID, &eventID, &eventType, &eventData, &metadataJSON, &timestamp, &version)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to scan event row: %w", err)
 		}
-		return
+
+		// Parse metadata
+		var metadata map[string]string
+		if metadataJSON != nil && *metadataJSON != "" {
+			metadata, err = parseMetadataJSON(*metadataJSON)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse metadata: %w", err)
+			}
+		}
+
+		event := eventstore.Event{
+			ID:        eventID,
+			Type:      eventType,
+			Data:      eventData,
+			Metadata:  metadata,
+			Timestamp: timestamp,
+			Version:   version,
+		}
+
+		envelope := s.eventToEnvelope(event, streamID)
+		result = append(result, envelope)
+		
+		lastID = id
 	}
 
-	for _, event := range events {
-		s.mu.Lock()
-
-		// Check if we've moved to a new timestamp
-		if !event.Timestamp.Equal(s.fromTimestamp) {
-			// Clear processed IDs for new timestamp
-			s.processedEventIDs = make(map[string]struct{})
-		}
-
-		// Skip if we've already processed this Event.ID within the current timestamp
-		if _, processed := s.processedEventIDs[event.ID]; processed {
-			s.mu.Unlock()
-			continue
-		}
-
-		// Mark Event.ID as processed
-		s.processedEventIDs[event.ID] = struct{}{}
-		s.fromTimestamp = event.Timestamp
-		s.mu.Unlock()
-
-		select {
-		case s.eventsCh <- event:
-		case <-s.closeCh:
-			return
-		}
+	if err = rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("error iterating rows: %w", err)
 	}
+
+	// Generate next cursor from last event processed
+	var nextCursor eventstore.Cursor
+	if len(result) > 0 {
+		nextCursor = s.idToCursor(lastID)
+	} else {
+		// No events found, return the original cursor
+		nextCursor = cursor
+	}
+
+	return result, nextCursor, nil
+}
+
+// Commit is called AFTER the projector has durably saved its own checkpoint.
+// For PostgreSQL implementation, this is a no-op.
+func (s *PostgresEventConsumer) Commit(ctx context.Context, cursor eventstore.Cursor) error {
+	// No-op for PostgreSQL implementation
+	return nil
 }

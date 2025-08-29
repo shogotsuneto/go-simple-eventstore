@@ -3,7 +3,6 @@ package postgres
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/shogotsuneto/go-simple-eventstore"
 )
@@ -140,7 +139,7 @@ func TestNewPostgresEventConsumer_EmptyTableName(t *testing.T) {
 		UseClientGeneratedTimestamps: false,
 	}
 
-	consumer, err := NewPostgresEventConsumer(config, 1*time.Second)
+	consumer, err := NewPostgresEventConsumer(config)
 	if err == nil {
 		t.Error("NewPostgresEventConsumer should return error for empty table name")
 	}
