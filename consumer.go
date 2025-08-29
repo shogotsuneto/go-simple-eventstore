@@ -11,9 +11,9 @@ type Cursor []byte
 
 // Envelope is a portable event wrapper. Fill what you can per backend.
 type Envelope struct {
-	Type     string    // domain event type
-	Data     []byte    // payload
-	Metadata []byte    // optional
+	Type     string // domain event type
+	Data     []byte // payload
+	Metadata []byte // optional
 
 	StreamID   string    // e.g., "card<id>"
 	CommitTime time.Time // db/stream commit/arrival time

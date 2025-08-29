@@ -186,49 +186,7 @@ func main() {
 }
 ```
 
-### Consuming Events with Cursor-based Fetch
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-
-    "github.com/shogotsuneto/go-simple-eventstore"
-    "github.com/shogotsuneto/go-simple-eventstore/memory"
-)
-
-func main() {
-    store := memory.NewInMemoryEventStore()
-    ctx := context.Background()
-
-    // Start from beginning (nil cursor)
-    batch, cursor, err := store.Fetch(ctx, nil, 100)
-    if err != nil {
-        panic(err)
-    }
-
-    for _, envelope := range batch {
-        // Process each event envelope...
-        fmt.Printf("Event: %s from stream %s\n", envelope.Type, envelope.StreamID)
-    }
-
-    // Commit the cursor after successful processing
-    err = store.Commit(ctx, cursor)
-    if err != nil {
-        panic(err)
-    }
-
-    // Fetch next batch from the advanced cursor
-    nextBatch, nextCursor, err := store.Fetch(ctx, cursor, 100)
-    if err != nil {
-        panic(err)
-    }
-}
-```
-
-### Incremental Event Processing
+### Event Consumption with Cursors
 
 ```go
 package main
@@ -246,8 +204,31 @@ import (
 func main() {
     store := memory.NewInMemoryEventStore()
     ctx := context.Background()
-    var savedCursor eventstore.Cursor // Load from persistent storage
+    
+    // Example 1: Basic cursor-based fetching
+    fmt.Println("=== Basic Cursor Usage ===")
+    
+    // Start from beginning with nil cursor
+    batch, cursor, err := store.Fetch(ctx, nil, 100)
+    if err != nil {
+        panic(err)
+    }
 
+    for _, envelope := range batch {
+        fmt.Printf("Event: %s from stream %s\n", envelope.Type, envelope.StreamID)
+    }
+
+    // Commit cursor after successful processing
+    err = store.Commit(ctx, cursor)
+    if err != nil {
+        panic(err)
+    }
+    
+    // Example 2: Incremental processing with persistence
+    fmt.Println("\n=== Incremental Processing ===")
+    
+    var savedCursor eventstore.Cursor // Load from persistent storage
+    
     for {
         // Fetch next batch of events
         batch, cursor, err := store.Fetch(ctx, savedCursor, 50)
@@ -264,8 +245,7 @@ func main() {
         
         // Process events
         for _, envelope := range batch {
-            // Process event...
-            fmt.Printf("Processing: %s\n", envelope.Type)
+            fmt.Printf("Processing: %s from stream %s\n", envelope.Type, envelope.StreamID)
         }
         
         // Commit progress
