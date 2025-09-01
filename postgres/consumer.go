@@ -58,30 +58,12 @@ func (s *PostgresEventConsumer) idToCursor(id int64) eventstore.Cursor {
 }
 
 // eventToEnvelope converts an Event to an Envelope.
-func (s *PostgresEventConsumer) eventToEnvelope(event eventstore.Event, streamID string) eventstore.Envelope {
-	// Encode metadata as JSON bytes if present
-	var metadataBytes []byte
-	if event.Metadata != nil {
-		// Simple encoding: concatenate key=value pairs with newlines
-		metadataStr := ""
-		for k, v := range event.Metadata {
-			if metadataStr != "" {
-				metadataStr += "\n"
-			}
-			metadataStr += k + "=" + v
-		}
-		metadataBytes = []byte(metadataStr)
-	}
-
+func (s *PostgresEventConsumer) eventToEnvelope(event eventstore.Event, streamID string, id int64) eventstore.Envelope {
 	return eventstore.Envelope{
-		Type:       event.Type,
-		Data:       event.Data,
-		Metadata:   metadataBytes,
-		StreamID:   streamID,
-		CommitTime: event.Timestamp,
-		EventID:    event.ID,
-		Partition:  s.tableName, // Use table name as partition
-		Offset:     fmt.Sprintf("%d", event.Version),
+		Event:     event,
+		StreamID:  streamID,
+		Partition: s.tableName, // Use table name as partition
+		Offset:    fmt.Sprintf("%d", id),
 	}
 }
 
@@ -138,7 +120,7 @@ func (s *PostgresEventConsumer) Fetch(ctx context.Context, cursor eventstore.Cur
 			Version:   version,
 		}
 
-		envelope := s.eventToEnvelope(event, streamID)
+		envelope := s.eventToEnvelope(event, streamID, id)
 		result = append(result, envelope)
 
 		lastID = id

@@ -62,8 +62,8 @@ func TestInMemoryEventStore_Fetch_WithEvents(t *testing.T) {
 
 	// Verify envelope structure
 	envelope := batch[0]
-	if envelope.Type != "UserCreated" {
-		t.Errorf("Expected Type 'UserCreated', got '%s'", envelope.Type)
+	if envelope.Event.Type != "UserCreated" {
+		t.Errorf("Expected Type 'UserCreated', got '%s'", envelope.Event.Type)
 	}
 	if envelope.StreamID != "user-123" {
 		t.Errorf("Expected StreamID 'user-123', got '%s'", envelope.StreamID)
@@ -71,8 +71,8 @@ func TestInMemoryEventStore_Fetch_WithEvents(t *testing.T) {
 	if envelope.Partition != "global" {
 		t.Errorf("Expected Partition 'global', got '%s'", envelope.Partition)
 	}
-	if envelope.EventID != "user-123-1" {
-		t.Errorf("Expected EventID 'user-123-1', got '%s'", envelope.EventID)
+	if envelope.Event.ID != "user-123-1" {
+		t.Errorf("Expected EventID 'user-123-1', got '%s'", envelope.Event.ID)
 	}
 
 	// Verify cursor is not empty
@@ -123,7 +123,7 @@ func TestInMemoryEventStore_Fetch_WithCursor(t *testing.T) {
 	}
 
 	// Ensure we got different events
-	if batch1[0].EventID == batch2[0].EventID {
+	if batch1[0].Event.ID == batch2[0].Event.ID {
 		t.Error("Expected different events in batches")
 	}
 
@@ -145,8 +145,8 @@ func TestInMemoryEventStore_Fetch_WithCursor(t *testing.T) {
 	if len(batch3) != 1 {
 		t.Errorf("Expected 1 new event, got %d", len(batch3))
 	}
-	if batch3[0].Type != "ProductCreated" {
-		t.Errorf("Expected ProductCreated event, got %s", batch3[0].Type)
+	if batch3[0].Event.Type != "ProductCreated" {
+		t.Errorf("Expected ProductCreated event, got %s", batch3[0].Event.Type)
 	}
 }
 

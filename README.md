@@ -42,13 +42,9 @@ type Consumer interface {
 }
 
 type Envelope struct {
-    Type     string    // domain event type
-    Data     []byte    // payload
-    Metadata []byte    // optional
+    Event Event // The complete event
 
-    StreamID   string    // e.g., "card<id>"
-    CommitTime time.Time // db/stream commit/arrival time
-    EventID    string    // ULID/KSUID/hash for idempotency (optional)
+    StreamID string // e.g., "card<id>"
 
     // Diagnostics (useful for logs/metrics)
     Partition string // "global" | "topic:3" | "shard-000..."
@@ -127,6 +123,7 @@ Event consumption uses cursor-based positioning for precise event delivery:
 ### Implemented
 - **In-Memory** - Simple in-memory implementation (suitable for testing and development)
 - **PostgreSQL** - Reliable relational database adapter with full ACID compliance
+  - 📋 [Schema Documentation](docs/POSTGRESQL_SCHEMA.md) - Complete table schema requirements for manual creation
 
 ### Work In Progress (WIP)
 - **DynamoDB** - AWS NoSQL database adapter (WIP)
@@ -287,6 +284,7 @@ func main() {
     if err := postgres.InitSchema(db, "events", false); err != nil {
         panic(err)
     }
+    // Note: For manual schema creation, see docs/POSTGRESQL_SCHEMA.md
     
     // Create producer and consumer
     config := postgres.Config{

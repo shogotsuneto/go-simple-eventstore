@@ -90,8 +90,8 @@ func main() {
 	fmt.Printf("Fetched %d events from beginning:\n", len(batch1))
 	for i, envelope := range batch1 {
 		fmt.Printf("  %d. %s from stream '%s' (EventID: %s, Partition: %s)\n",
-			i+1, envelope.Type, envelope.StreamID, envelope.EventID, envelope.Partition)
-		fmt.Printf("     Data: %s\n", string(envelope.Data))
+			i+1, envelope.Event.Type, envelope.StreamID, envelope.Event.ID, envelope.Partition)
+		fmt.Printf("     Data: %s\n", string(envelope.Event.Data))
 	}
 
 	// Add more events
@@ -128,8 +128,8 @@ func main() {
 	fmt.Printf("Fetched %d new events from cursor:\n", len(batch2))
 	for i, envelope := range batch2 {
 		fmt.Printf("  %d. %s from stream '%s' (EventID: %s)\n",
-			i+1, envelope.Type, envelope.StreamID, envelope.EventID)
-		fmt.Printf("     Data: %s\n", string(envelope.Data))
+			i+1, envelope.Event.Type, envelope.StreamID, envelope.Event.ID)
+		fmt.Printf("     Data: %s\n", string(envelope.Event.Data))
 	}
 
 	// Demonstrate commit (no-op for memory implementation)
