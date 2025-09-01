@@ -3,7 +3,6 @@ package eventstore
 
 import (
 	"context"
-	"time"
 )
 
 // Cursor is an opaque checkpoint token (adapter-defined: global seq, shard map, Kafka offsets...)
@@ -11,13 +10,9 @@ type Cursor []byte
 
 // Envelope is a portable event wrapper. Fill what you can per backend.
 type Envelope struct {
-	Type     string // domain event type
-	Data     []byte // payload
-	Metadata []byte // optional
+	Event Event // The complete event
 
-	StreamID   string    // e.g., "card<id>"
-	CommitTime time.Time // db/stream commit/arrival time
-	EventID    string    // ULID/KSUID/hash for idempotency (optional)
+	StreamID string // e.g., "card<id>"
 
 	// Diagnostics (useful for logs/metrics)
 	Partition string // "global" | "topic:3" | "shard-000..."
