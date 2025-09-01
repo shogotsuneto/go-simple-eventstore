@@ -4,6 +4,16 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 
 ## [Unreleased]
 
+### ⚠️ Breaking Changes  
+- **Envelope restructured to hold complete Event**: Envelope now contains an `Event` field instead of individual event properties. Access event data via `envelope.Event.Type` instead of `envelope.Type`, `envelope.Event.Data` instead of `envelope.Data`, etc.
+
+### ✨ Features
+- **Complete Event access in Envelope**: All Event fields including Version are now accessible through `envelope.Event` providing better access to event metadata
+- **Simplified Event-to-Envelope conversion**: Removed complex metadata encoding since Event already provides map[string]string metadata format
+
+### 🔧 Improvements
+- **Clear data separation**: Envelope now clearly separates Event data from transport-specific fields (StreamID, Partition, Offset)
+
 ## [v0.0.8] - 2025-08-29
 
 ### ⚠️ Breaking Changes
