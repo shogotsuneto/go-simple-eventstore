@@ -14,6 +14,9 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 ### 🔧 Improvements
 - **Clear data separation**: Envelope now clearly separates Event data from transport-specific fields (StreamID, Partition, Offset)
 
+### 🐛 Bug Fixes
+- **Envelope offset now uses database ID**: Fixed offset to use partition-specific database ID instead of stream-specific event version for correct cursor positioning
+
 ## [v0.0.8] - 2025-08-29
 
 ### ⚠️ Breaking Changes
