@@ -95,8 +95,8 @@ func TestPostgresConsumer_Cursor_BasicFetch(t *testing.T) {
 
 	// Verify envelope structure
 	envelope := batch[0]
-	if envelope.Type != "UserCreated" {
-		t.Errorf("Expected Type 'UserCreated', got '%s'", envelope.Type)
+	if envelope.Event.Type != "UserCreated" {
+		t.Errorf("Expected Type 'UserCreated', got '%s'", envelope.Event.Type)
 	}
 	if envelope.StreamID != "user-123" {
 		t.Errorf("Expected StreamID 'user-123', got '%s'", envelope.StreamID)
@@ -104,7 +104,7 @@ func TestPostgresConsumer_Cursor_BasicFetch(t *testing.T) {
 	if envelope.Partition == "" {
 		t.Error("Expected non-empty partition")
 	}
-	if envelope.EventID == "" {
+	if envelope.Event.ID == "" {
 		t.Error("Expected non-empty event ID")
 	}
 }
@@ -153,8 +153,8 @@ func TestPostgresConsumer_Cursor_IncrementalFetch(t *testing.T) {
 		t.Errorf("Expected 1 new event in second batch, got %d", len(batch2))
 	}
 
-	if batch2[0].Type != "OrderShipped" {
-		t.Errorf("Expected OrderShipped event, got %s", batch2[0].Type)
+	if batch2[0].Event.Type != "OrderShipped" {
+		t.Errorf("Expected OrderShipped event, got %s", batch2[0].Event.Type)
 	}
 
 	// Fetch again from same cursor should get nothing
