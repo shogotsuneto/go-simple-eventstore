@@ -4,6 +4,8 @@ This file documents all user-relevant changes in the go-simple-eventstore librar
 
 ## [Unreleased]
 
+## [v0.0.9] - 2025-09-01
+
 ### ⚠️ Breaking Changes
 
 - **Envelope restructured to hold complete Event**: Envelope now contains an `Event` field instead of individual event properties. Access event data via `envelope.Event.Type` instead of `envelope.Type`, `envelope.Event.Data` instead of `envelope.Data`, etc.
